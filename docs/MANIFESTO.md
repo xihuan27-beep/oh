@@ -1,7 +1,7 @@
 # Data 기반 Multi-Agent 부동산 투자 자문 시스템 Manifesto
 
 > 우리가 왜 이걸 만드는지, 어떤 기준으로 결정하는지에 대한 약속
-> (교수님 피드백 + C-suite 페르소나 반영 v3)
+> (교수님 피드백 + C-suite 페르소나 반영 v3 → office-hours 인사이트 반영 v4)
 
 \---
 
