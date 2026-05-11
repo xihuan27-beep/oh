@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VerifyHome — 시세 분석</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #F0F2F8;
+    --surface: #FFFFFF;
+    --navy:  #0F1B35;
+    --navy2: #1A2E52;
+    --blue:  #1E5EFF;
+    --blue-light: #EEF3FF;
+    --green: #00B85E;
+    --green-light: #E6F9F0;
+    --orange: #FF6B35;
+    --text-primary: #0F1B35;
+    --text-secondary: #5A6476;
+    --text-muted: #9AA2B4;
+    --border: #E4E8F2;
+    --radius-sm: 10px;
+    --radius-md: 16px;
+    --radius-lg: 20px;
+    --shadow-sm: 0 1px 4px rgba(15,27,53,0.06);
+    --shadow-md: 0 4px 20px rgba(15,27,53,0.09);
+    --topnav-h: 60px;
+  }
+
+  html { font-family: 'Pretendard', -apple-system, sans-serif; background: var(--bg); color: var(--text-primary); font-size: 15px; }
+  body { min-height: 100vh; display: flex; flex-direction: column; }
+
+  /* ── Top Nav ── */
+  .topnav {
+    position: sticky; top: 0; z-index: 100;
+    background: var(--navy);
+    padding: 0 28px;
+    display: flex; align-items: center;
+    height: var(--topnav-h);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.18);
+    flex-shrink: 0;
+  }
+  .topnav-logo {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 16px; font-weight: 800; letter-spacing: -0.3px;
+    margin-right: 24px; text-decoration: none;
+  }
+  .logo-verify { color: var(--blue); }
+  .logo-home   { color: #fff; }
+  .topnav-addr {
+    flex: 1;
+    font-size: 13px; color: rgba(255,255,255,0.65);
+    display: flex; align-items: center; gap: 8px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .topnav-addr-val { color: #fff; font-weight: 600; }
+  .topnav-sep { color: rgba(255,255,255,0.3); }
+  .topnav-back {
+    margin-left: auto; flex-shrink: 0;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    color: #fff; font-size: 13px; font-weight: 500;
+    padding: 7px 14px; border-radius: 8px;
+    cursor: pointer; text-decoration: none;
+    transition: background 0.15s;
+  }
+  .topnav-back:hover { background: rgba(255,255,255,0.18); }
+
+  /* ── 2-Column Body ── */
+  .page-body {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 60fr 40fr;
+    height: calc(100vh - var(--topnav-h));
+    overflow: hidden;
+  }
+
+  /* ── Left Column ── */
+  .left-col {
+    overflow-y: auto;
+    padding: 28px 20px 48px 28px;
+  }
+
+  /* ── Summary Strip ── */
+  .summary-strip {
+    background: var(--navy);
+    border-radius: var(--radius-lg);
+    padding: 22px 28px;
+    display: flex; align-items: center; gap: 32px;
+    margin-bottom: 20px;
+  }
+  .summary-main { flex: 1; min-width: 0; }
+  .summary-tag {
+    display: inline-block;
+    background: rgba(30,94,255,0.25);
+    color: var(--blue-light);
+    font-size: 11px; font-weight: 700;
+    padding: 3px 9px; border-radius: 5px;
+    margin-bottom: 8px; letter-spacing: 0.3px;
+  }
+  .summary-addr {
+    font-size: 20px; font-weight: 800; color: #fff;
+    letter-spacing: -0.4px; margin-bottom: 3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .summary-sub { font-size: 13px; color: rgba(255,255,255,0.5); }
+  .summary-stats { display: flex; gap: 22px; flex-shrink: 0; }
+  .stat-item { text-align: center; }
+  .stat-val {
+    font-size: 22px; font-weight: 900; color: #fff;
+    letter-spacing: -0.6px; line-height: 1;
+  }
+  .stat-val.up { color: #FF6B6B; }
+  .stat-label { font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 3px; }
+  .stat-divider { width: 1px; background: rgba(255,255,255,0.12); }
+
+  /* ── Chart Card ── */
+  .chart-card {
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    padding: 24px 24px 18px;
+    box-shadow: var(--shadow-md);
+    margin-bottom: 16px;
+  }
+  .chart-header {
+    display: flex; align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .chart-title { font-size: 15px; font-weight: 700; color: var(--navy); }
+  .chart-subtitle { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+  .chart-legend {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+    font-size: 12px; color: var(--text-secondary);
+  }
+  .legend-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    display: inline-block; margin-right: 4px;
+  }
+  .chart-wrap { position: relative; height: 240px; }
+
+  /* ── Dong Selector ── */
+  .compare-section { margin-bottom: 16px; }
+  .compare-btn {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface);
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px 22px;
+    cursor: pointer;
+    width: 100%;
+    font-size: 14px; font-weight: 600; color: var(--blue);
+    box-shadow: var(--shadow-sm);
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .compare-btn:hover { border-color: var(--blue); background: var(--blue-light); }
+  .compare-btn-icon { font-size: 16px; }
+
+  .dong-panel {
+    display: none;
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    box-shadow: var(--shadow-md);
+    margin-top: 10px;
+  }
+  .dong-panel.open { display: block; }
+  .dong-panel-title {
+    font-size: 13px; font-weight: 700; color: var(--text-secondary);
+    margin-bottom: 12px;
+  }
+  .dong-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .dong-chip {
+    padding: 7px 16px;
+    border-radius: 30px;
+    border: 1.5px solid var(--border);
+    font-size: 13px; font-weight: 500;
+    cursor: pointer; color: var(--text-secondary);
+    background: var(--surface);
+    transition: all 0.15s;
+  }
+  .dong-chip:hover { border-color: var(--blue); color: var(--blue); }
+  .dong-chip.active {
+    background: var(--blue); border-color: var(--blue);
+    color: #fff; font-weight: 600;
+  }
+
+  .disclaimer {
+    text-align: center; font-size: 11px;
+    color: var(--text-muted); margin-top: 24px;
+  }
+
+  /* ── Right Column: Chat Panel ── */
+  .right-col {
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid var(--border);
+    background: var(--surface);
+    overflow: hidden;
+  }
+
+  .chat-panel {
+    display: flex; flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .chat-header {
+    flex-shrink: 0;
+    display: flex; align-items: center; gap: 10px;
+    padding: 18px 20px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .chat-header-icon {
+    width: 36px; height: 36px;
+    background: var(--blue-light);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  .chat-header-info {}
+  .chat-header-title {
+    font-size: 14px; font-weight: 800; color: var(--navy);
+    letter-spacing: -0.2px;
+  }
+  .chat-header-sub {
+    font-size: 11px; color: var(--text-muted); margin-top: 1px;
+  }
+  .chat-status {
+    margin-left: auto;
+    display: flex; align-items: center; gap: 5px;
+    font-size: 11px; color: var(--green); font-weight: 600;
+  }
+  .chat-status-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--green);
+  }
+
+  .chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 16px 8px;
+    display: flex; flex-direction: column; gap: 10px;
+    scroll-behavior: smooth;
+  }
+
+  /* Message bubbles */
+  .msg { display: flex; flex-direction: column; max-width: 90%; gap: 3px; }
+  .msg.bot { align-self: flex-start; }
+  .msg.user { align-self: flex-end; }
+
+  .msg-label {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.3px;
+    color: var(--text-muted);
+    padding: 0 4px;
+  }
+  .msg.user .msg-label { text-align: right; }
+
+  .msg-bubble {
+    padding: 10px 14px;
+    border-radius: 14px;
+    font-size: 13.5px; line-height: 1.65;
+  }
+  .msg.bot .msg-bubble {
+    background: var(--blue-light);
+    color: var(--navy);
+    border-bottom-left-radius: 4px;
+  }
+  .msg.bot.system .msg-bubble {
+    background: #F6F7FA;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    font-size: 12.5px;
+  }
+  .msg.user .msg-bubble {
+    background: var(--navy);
+    color: #fff;
+    border-bottom-right-radius: 4px;
+  }
+  .msg-bubble strong { font-weight: 700; }
+  .msg.bot .msg-bubble strong { color: var(--blue); }
+  .msg.user .msg-bubble strong { color: #7FBFFF; }
+
+  /* Typing indicator */
+  .typing-indicator .msg-bubble {
+    display: flex; gap: 5px; align-items: center;
+    padding: 12px 16px;
+  }
+  .typing-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--blue);
+    animation: typingPulse 1.2s infinite;
+  }
+  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes typingPulse {
+    0%, 60%, 100% { opacity: 0.25; transform: scale(0.85); }
+    30% { opacity: 1; transform: scale(1); }
+  }
+
+  /* Chat Input */
+  .chat-input-wrap {
+    flex-shrink: 0;
+    padding: 12px 14px 14px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    display: flex; gap: 8px; align-items: flex-end;
+  }
+  .chat-input {
+    flex: 1;
+    height: 42px;
+    padding: 0 14px;
+    border: 1.5px solid var(--border);
+    border-radius: 12px;
+    font-family: inherit; font-size: 13.5px;
+    color: var(--navy); background: #fff;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    resize: none;
+  }
+  .chat-input::placeholder { color: var(--text-muted); }
+  .chat-input:focus {
+    border-color: var(--blue);
+    box-shadow: 0 0 0 3px rgba(30,94,255,0.1);
+  }
+  .chat-send-btn {
+    flex-shrink: 0;
+    width: 42px; height: 42px;
+    background: var(--blue); border: none;
+    border-radius: 12px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s, transform 0.1s;
+  }
+  .chat-send-btn:hover { background: #1650e0; }
+  .chat-send-btn:active { transform: scale(0.93); }
+  .chat-send-btn svg { fill: #fff; width: 16px; height: 16px; }
+  .chat-send-btn:disabled { background: var(--border); cursor: not-allowed; }
+
+  /* PDF Button */
+  .chat-pdf-btn {
+    margin-left: 10px; flex-shrink: 0;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 12px; font-weight: 600;
+    padding: 5px 10px; border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+  }
+  .chat-pdf-btn:hover { background: var(--blue-light); color: var(--blue); border-color: var(--blue); }
+  .chat-pdf-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Print */
+  #printArea { display: none; }
+  @media print {
+    body > * { display: none !important; }
+    #printArea {
+      display: block !important;
+      font-family: 'Pretendard', sans-serif;
+      color: #0F1B35;
+      padding: 40px;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+    #printArea h1 { font-size: 22px; font-weight: 900; margin-bottom: 4px; }
+    #printArea .print-meta { color: #5A6476; font-size: 13px; margin-bottom: 32px; }
+    #printArea h2 { font-size: 15px; font-weight: 800; margin: 24px 0 10px; border-bottom: 2px solid #E4E8F2; padding-bottom: 6px; }
+    #printArea .summary-box { background: #F0F2F8; border-radius: 10px; padding: 16px 20px; margin-bottom: 24px; }
+    #printArea .msg-item { margin-bottom: 12px; }
+    #printArea .msg-item .role { font-size: 11px; font-weight: 700; color: #9AA2B4; display: block; margin-bottom: 2px; }
+    #printArea .msg-item.user .role { color: #1E5EFF; }
+    #printArea .msg-item p { margin: 0; }
+    #printArea .print-footer { margin-top: 40px; font-size: 11px; color: #9AA2B4; text-align: center; }
+  }
+
+  /* Quick questions */
+  .quick-questions {
+    padding: 0 14px 10px;
+    display: flex; flex-wrap: wrap; gap: 6px;
+  }
+  .quick-q {
+    padding: 5px 12px;
+    border: 1px solid var(--blue);
+    border-radius: 20px;
+    font-size: 12px; color: var(--blue); font-weight: 500;
+    cursor: pointer; background: #fff;
+    transition: background 0.12s, color 0.12s;
+    white-space: nowrap;
+  }
+  .quick-q:hover { background: var(--blue); color: #fff; }
+</style>
+</head>
+<body>
+
+<!-- Top Nav -->
+<nav class="topnav">
+  <a href="page0-web.html" class="topnav-logo">
+    <span class="logo-verify">Verify</span><span class="logo-home">Home</span>
+  </a>
+  <div class="topnav-addr">
+    <span id="topnavAddr">—</span>
+  </div>
+  <a href="page0-web.html" class="topnav-back">← 주소 다시 입력</a>
+</nav>
+
+<div class="page-body">
+
+  <!-- ── Left Column ── -->
+  <div class="left-col">
+
+    <!-- Summary Strip -->
+    <div class="summary-strip">
+      <div class="summary-main">
+        <div class="summary-tag">시세 분석</div>
+        <div class="summary-addr" id="summaryAddr">—</div>
+        <div class="summary-sub">실거래가 기준 · 최근 6개월</div>
+      </div>
+      <div class="summary-stats">
+        <div class="stat-item">
+          <div class="stat-val up" id="statComplex">—</div>
+          <div class="stat-label">단지 6개월</div>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <div class="stat-val" id="statDong">—</div>
+          <div class="stat-label">동 평균</div>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <div class="stat-val up" id="statVsDong">—</div>
+          <div class="stat-label">동 대비 초과</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chart Card -->
+    <div class="chart-card">
+      <div class="chart-header">
+        <div>
+          <div class="chart-title">30평형대 평단가 추이</div>
+          <div class="chart-subtitle">단위: 만원/평 · 실거래 기준</div>
+        </div>
+        <div class="chart-legend" id="chartLegend">
+          <span><span class="legend-dot" style="background:#1E5EFF"></span>래미안아파트 (단지)</span>
+          <span><span class="legend-dot" style="background:#00B85E"></span>역삼동 평균</span>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="mainChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Compare Section -->
+    <div class="compare-section">
+      <button class="compare-btn" onclick="toggleDongPanel()">
+        <span class="compare-btn-icon">＋</span>
+        주변 시세와 비교하기 — 비교할 동을 선택하세요
+      </button>
+      <div class="dong-panel" id="dongPanel">
+        <div class="dong-panel-title">강남구 인근 동 선택 (복수 가능)</div>
+        <div class="dong-chips">
+          <div class="dong-chip" onclick="toggleDong(this, '논현동')">논현동</div>
+          <div class="dong-chip" onclick="toggleDong(this, '삼성동')">삼성동</div>
+          <div class="dong-chip" onclick="toggleDong(this, '대치동')">대치동</div>
+          <div class="dong-chip" onclick="toggleDong(this, '청담동')">청담동</div>
+          <div class="dong-chip" onclick="toggleDong(this, '압구정동')">압구정동</div>
+          <div class="dong-chip" onclick="toggleDong(this, '개포동')">개포동</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="disclaimer">본 데이터는 국토교통부 실거래가 공개시스템 기반입니다 · 시연용 시안</div>
+
+  </div><!-- /left-col -->
+
+  <!-- ── Right Column: Chatbot ── -->
+  <div class="right-col">
+    <div class="chat-panel">
+
+      <!-- Chat Header -->
+      <div class="chat-header">
+        <div class="chat-header-icon">💬</div>
+        <div class="chat-header-info">
+          <div class="chat-header-title">시세 AI</div>
+          <div class="chat-header-sub">차트 데이터 기반 분석</div>
+        </div>
+        <div class="chat-status">
+          <div class="chat-status-dot"></div>
+          <span id="statusLabel">준비</span>
+        </div>
+        <button class="chat-pdf-btn" id="pdfBtn" onclick="savePDF()" title="대화 내용 요약 저장">저장</button>
+      </div>
+
+      <!-- Messages -->
+      <div class="chat-messages" id="chatMessages"></div>
+
+      <!-- Quick Questions -->
+      <div class="quick-questions" id="quickQuestions">
+        <div class="quick-q" onclick="askQuick('지금 사면 비싼 건가요?')">지금 사면 비싼 건가요?</div>
+        <div class="quick-q" onclick="askQuick('역삼동 평균 대비 어때요?')">역삼동 대비 어때요?</div>
+        <div class="quick-q" onclick="askQuick('상승세가 계속될까요?')">상승세 전망은?</div>
+      </div>
+
+      <!-- Input -->
+      <div class="chat-input-wrap">
+        <input
+          class="chat-input"
+          type="text"
+          id="chatInput"
+          placeholder="차트에 대해 질문하세요..."
+          autocomplete="off"
+          onkeydown="if(event.key==='Enter' && !event.shiftKey){ event.preventDefault(); sendMessage(); }"
+        >
+        <button class="chat-send-btn" id="sendBtn" onclick="sendMessage()" aria-label="전송">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M2 21l21-9L2 3v7l15 2-15 2z"/>
+          </svg>
+        </button>
+      </div>
+
+    </div>
+  </div><!-- /right-col -->
+
+</div><!-- /page-body -->
+
+<div id="printArea"></div>
+
+<script>
+// ── Init: read address from URL params ──
+function initPage() {
+  const params = new URLSearchParams(window.location.search);
+  const address = params.get('address') || '역삼동 래미안아파트';
+  document.getElementById('topnavAddr').textContent = address;
+  document.getElementById('summaryAddr').textContent = address;
+  return address;
+}
+const PAGE_ADDRESS = initPage();
+
+// ── Mock Data (fallback) ──
+const MOCK_MONTHS = ['11월','12월','1월','2월','3월','4월'];
+const MOCK_COMPLEX = [4200,4500,5000,5300,5600,5800];
+const MOCK_DONG    = [4100,4300,4700,5000,5200,5500];
+
+const DONG_COLORS = ['#FF6B35','#9B59B6','#F39C12','#E74C3C','#1ABC9C','#95A5A6'];
+
+// 동별 mock 비교 데이터 (API 실패 시 fallback)
+const DATA = {
+  '논현동':   { data: [3800,3900,4200,4500,4700,4900], color: '#FF6B35' },
+  '삼성동':   { data: [4500,4700,5100,5400,5700,6000], color: '#9B59B6' },
+  '대치동':   { data: [5000,5200,5500,5800,6100,6400], color: '#F39C12' },
+  '청담동':   { data: [6000,6200,6500,6800,7100,7300], color: '#E74C3C' },
+  '압구정동': { data: [7000,7200,7600,8000,8400,8700], color: '#1ABC9C' },
+  '개포동':   { data: [4300,4500,4800,5000,5200,5400], color: '#95A5A6' },
+};
+
+// 실API 로드 후 채워지는 값
+let REAL_LAWD_CD = null;
+let REAL_APT_NAME = PAGE_ADDRESS;
+
+// ── Chart ──
+const ctx = document.getElementById('mainChart').getContext('2d');
+const chart = new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: MOCK_MONTHS,
+    datasets: [
+      makeDataset(PAGE_ADDRESS, { data: MOCK_COMPLEX, color: '#1E5EFF' }, true),
+      makeDataset('동 평균', { data: MOCK_DONG, color: '#00B85E' }, false),
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#0F1B35',
+        titleFont: { family: 'Pretendard', weight: '700' },
+        bodyFont: { family: 'Pretendard' },
+        callbacks: {
+          label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString()}만원/평`
+        }
+      }
+    },
+    scales: {
+      x: { grid: { color: '#E4E8F2' }, ticks: { font: { family: 'Pretendard', size: 12 } } },
+      y: {
+        grid: { color: '#E4E8F2' },
+        ticks: { font: { family: 'Pretendard', size: 12 }, callback: v => v.toLocaleString() },
+        title: { display: true, text: '만원/평', font: { family: 'Pretendard', size: 11 }, color: '#9AA2B4' }
+      }
+    }
+  }
+});
+
+function makeDataset(label, d, isBold) {
+  return {
+    label, data: d.data,
+    borderColor: d.color,
+    backgroundColor: d.color + '18',
+    borderWidth: isBold ? 3 : 2,
+    pointRadius: isBold ? 5 : 3,
+    pointBackgroundColor: d.color,
+    tension: 0.3, fill: false,
+  };
+}
+
+// ── Dong Panel ──
+function toggleDongPanel() {
+  document.getElementById('dongPanel').classList.toggle('open');
+}
+
+const activeDongs = new Set();
+
+async function toggleDong(el, dong) {
+  if (activeDongs.has(dong)) {
+    activeDongs.delete(dong);
+    el.classList.remove('active');
+    removeDataset(dong);
+    addBotMessage(`${dong} 데이터를 차트에서 제거했어요.`, 'system');
+    return;
+  }
+
+  activeDongs.add(dong);
+  el.classList.add('active');
+
+  // 실API로 동 데이터 시도, 실패 시 mock fallback
+  if (REAL_LAWD_CD) {
+    try {
+      const res = await fetch(
+        `http://localhost:8000/api/dong-data?lawd_cd=${REAL_LAWD_CD}&dong_name=${encodeURIComponent(dong)}`,
+        { signal: AbortSignal.timeout(15000) }
+      );
+      if (res.ok) {
+        const d = await res.json();
+        const colorIdx = (activeDongs.size - 1) % DONG_COLORS.length;
+        DATA[dong] = { data: d.data, color: DATA[dong]?.color ?? DONG_COLORS[colorIdx] };
+      }
+    } catch { /* mock 사용 */ }
+  }
+
+  if (!DATA[dong]) {
+    addBotMessage(`${dong} 데이터를 가져올 수 없어요.`, 'system');
+    activeDongs.delete(dong);
+    el.classList.remove('active');
+    return;
+  }
+
+  addDataset(dong);
+  addBotMessage(`<strong>${dong}</strong>을 차트에 추가했어요! 비교 분석을 도와드릴게요.`);
+}
+
+function addDataset(dong) {
+  chart.data.datasets.push(makeDataset(dong, DATA[dong], false));
+  chart.update();
+  updateLegend();
+}
+
+function removeDataset(dong) {
+  chart.data.datasets = chart.data.datasets.filter(d => d.label !== dong);
+  chart.update();
+  updateLegend();
+}
+
+function updateLegend() {
+  const legend = document.getElementById('chartLegend');
+  legend.innerHTML = chart.data.datasets.map(d =>
+    `<span><span class="legend-dot" style="background:${DATA[d.label]?.color || d.borderColor}"></span>${d.label}</span>`
+  ).join('');
+}
+
+// ── Chat ──
+const chatMessages = document.getElementById('chatMessages');
+const chatInput = document.getElementById('chatInput');
+const sendBtn = document.getElementById('sendBtn');
+const statusLabel = document.getElementById('statusLabel');
+
+let conversationHistory = [];
+let isLoading = false;
+
+// Initial bot message
+addBotMessage(
+  `안녕하세요! <strong>${PAGE_ADDRESS}</strong> 시세 차트입니다.<br>차트에 대해 무엇이든 물어보세요.<br><br>예) <em>"지금 사면 비싼 건가요?"</em>`
+);
+
+// 실거래 API 데이터 로드 (백엔드 연결 시 차트 자동 업데이트)
+loadRealData();
+
+function addBotMessage(html, type = 'bot') {
+  const msg = document.createElement('div');
+  msg.className = `msg bot${type === 'system' ? ' system' : ''}`;
+  msg.innerHTML = `
+    <div class="msg-label">AI</div>
+    <div class="msg-bubble">${html}</div>
+  `;
+  chatMessages.appendChild(msg);
+  scrollToBottom();
+  return msg;
+}
+
+function addUserMessage(text) {
+  const msg = document.createElement('div');
+  msg.className = 'msg user';
+  msg.innerHTML = `
+    <div class="msg-label">나</div>
+    <div class="msg-bubble">${escapeHtml(text)}</div>
+  `;
+  chatMessages.appendChild(msg);
+  scrollToBottom();
+}
+
+function addTypingIndicator() {
+  const msg = document.createElement('div');
+  msg.className = 'msg bot typing-indicator';
+  msg.id = 'typingIndicator';
+  msg.innerHTML = `
+    <div class="msg-label">AI</div>
+    <div class="msg-bubble">
+      <div class="typing-dot"></div>
+      <div class="typing-dot"></div>
+      <div class="typing-dot"></div>
+    </div>
+  `;
+  chatMessages.appendChild(msg);
+  scrollToBottom();
+}
+
+function removeTypingIndicator() {
+  const el = document.getElementById('typingIndicator');
+  if (el) el.remove();
+}
+
+function scrollToBottom() {
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function getChartContext() {
+  const ds = chart.data.datasets;
+  const complexDs = ds[0];
+  const dongDs = ds[1];
+  const complexData = complexDs?.data ?? MOCK_COMPLEX;
+  const dongData = dongDs?.data ?? MOCK_DONG;
+  const first = v => v[0] || 1;
+  const last = v => v.at(-1) || 0;
+  return {
+    address: PAGE_ADDRESS,
+    size_pyeong: 30,
+    months: chart.data.labels,
+    complex: complexData,
+    dong: dongData,
+    active_dongs: [...activeDongs].map(d => ({ name: d, data: DATA[d]?.data ?? [] })),
+    stats: {
+      complex_change_pct: +((last(complexData) / first(complexData) - 1) * 100).toFixed(1),
+      dong_change_pct: +((last(dongData) / first(dongData) - 1) * 100).toFixed(1),
+      complex_vs_dong_pct: +((last(complexData) / last(dongData) - 1) * 100).toFixed(1),
+      latest_complex: last(complexData),
+      latest_dong: last(dongData),
+    }
+  };
+}
+
+async function loadRealData() {
+  try {
+    const res = await fetch(
+      `http://localhost:8000/api/market-data?address=${encodeURIComponent(PAGE_ADDRESS)}`,
+      { signal: AbortSignal.timeout(15000) }
+    );
+    if (!res.ok) throw new Error('API error');
+    const d = await res.json();
+
+    REAL_LAWD_CD = d.lawd_cd;
+    REAL_APT_NAME = d.apt_name;
+
+    // 차트 업데이트
+    chart.data.labels = d.months;
+    chart.data.datasets[0].label = d.apt_name;
+    chart.data.datasets[0].data = d.complex;
+    chart.data.datasets[1].data = d.dong_avg;
+    chart.update();
+    updateLegend();
+
+    // 스탯 업데이트
+    if (d.stats) {
+      const s = d.stats;
+      const fmt = v => (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
+      document.getElementById('statComplex').textContent = fmt(s.complex_change_pct);
+      document.getElementById('statDong').textContent = fmt(s.dong_change_pct);
+      document.getElementById('statVsDong').textContent = fmt(s.complex_vs_dong_pct);
+    }
+
+    addBotMessage(`실거래 데이터 로드 완료 — <strong>${d.apt_name}</strong> 최근 6개월 데이터입니다.`, 'system');
+  } catch {
+    // mock 데이터 그대로 사용
+    const mockFmt = v => (v >= 0 ? '+' : '') + v + '%';
+    document.getElementById('statComplex').textContent = '+38%';
+    document.getElementById('statDong').textContent = '+34%';
+    document.getElementById('statVsDong').textContent = '+5.5%';
+  }
+}
+
+// Mock responses for offline / fallback
+const MOCK_RESPONSES = [
+  '역삼동 래미안아파트 30평형은 최근 6개월간 4,200만원에서 5,800만원으로 <strong>+38%</strong> 상승했습니다. 역삼동 평균(+34%) 대비 4%p 빠른 속도로, 현재 평단가는 동 평균보다 5.5% 높은 수준입니다.',
+  '차트를 보면 단지 평단가가 역삼동 평균을 <strong>6개월 내내 지속적으로 상회</strong>하고 있어요. 이는 해당 단지가 동 내에서 상대적으로 프리미엄을 유지하고 있다는 신호입니다.',
+  '단기 상승폭이 크기 때문에 매입 시점에 따라 리스크가 다릅니다. 현재 평단가 5,800만원은 6개월 전(4,200만원) 대비 <strong>+38%</strong>로, 추가 상승 여력과 조정 가능성을 함께 고려하는 것이 중요합니다.',
+  '주변 동과 비교하려면 아래 "주변 시세와 비교하기" 버튼을 눌러 동을 추가해보세요. 삼성동(현재 6,000만원)이나 대치동(6,400만원)과 비교하면 역삼동의 상대적 위치를 파악할 수 있습니다.',
+];
+let mockIdx = 0;
+
+async function callChatAPI(userMsg, context) {
+  try {
+    const res = await fetch('http://localhost:8000/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: userMsg, context, history: conversationHistory }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) throw new Error('API error');
+    const data = await res.json();
+    return data.reply;
+  } catch {
+    // Offline fallback
+    return MOCK_RESPONSES[mockIdx++ % MOCK_RESPONSES.length];
+  }
+}
+
+async function sendMessage() {
+  const text = chatInput.value.trim();
+  if (!text || isLoading) return;
+
+  isLoading = true;
+  sendBtn.disabled = true;
+  chatInput.value = '';
+  statusLabel.textContent = '답변 중...';
+
+  // Hide quick questions after first real message
+  document.getElementById('quickQuestions').style.display = 'none';
+
+  addUserMessage(text);
+  conversationHistory.push({ role: 'user', content: text });
+
+  addTypingIndicator();
+
+  const context = getChartContext();
+  const reply = await callChatAPI(text, context);
+
+  removeTypingIndicator();
+  addBotMessage(reply);
+  conversationHistory.push({ role: 'assistant', content: reply });
+
+  isLoading = false;
+  sendBtn.disabled = false;
+  statusLabel.textContent = '준비';
+  chatInput.focus();
+}
+
+function askQuick(q) {
+  chatInput.value = q;
+  sendMessage();
+}
+
+async function savePDF() {
+  if (conversationHistory.length === 0) {
+    alert('저장할 대화 내용이 없어요. 먼저 질문해 보세요!');
+    return;
+  }
+
+  const pdfBtn = document.getElementById('pdfBtn');
+  pdfBtn.textContent = '요약 중...';
+  pdfBtn.disabled = true;
+
+  let summaryText = '';
+  try {
+    const res = await fetch('http://localhost:8000/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: '지금까지의 대화를 3~5문장으로 요약해줘. 핵심 수치와 결론 위주로.',
+        context: getChartContext(),
+        history: conversationHistory,
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (res.ok) summaryText = (await res.json()).reply;
+  } catch {}
+
+  const now = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
+
+  const historyHtml = conversationHistory.map(m => `
+    <div class="msg-item ${m.role}">
+      <span class="role">${m.role === 'user' ? '나' : 'AI'}</span>
+      <p>${m.content.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</p>
+    </div>
+  `).join('');
+
+  document.getElementById('printArea').innerHTML = `
+    <h1>VerifyHome 시세 분석 리포트</h1>
+    <p class="print-meta">${PAGE_ADDRESS} &nbsp;·&nbsp; ${now}</p>
+    ${summaryText ? `<h2>대화 요약</h2><div class="summary-box"><p>${summaryText}</p></div>` : ''}
+    <h2>대화 내용</h2>
+    ${historyHtml}
+    <p class="print-footer">본 리포트는 국토교통부 실거래가 공개시스템 기반 VerifyHome이 생성했습니다.</p>
+  `;
+
+  pdfBtn.textContent = '저장';
+  pdfBtn.disabled = false;
+  window.print();
+}
+</script>
+</body>
+</html>
