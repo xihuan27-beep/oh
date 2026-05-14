@@ -1072,6 +1072,15 @@ function getChartContext() {
       complex_vs_dong_pct: +((lastValid(cma) / lastValid(dma) - 1) * 100).toFixed(1),
       latest_complex: lastValid(cma),
       latest_dong:    lastValid(dma),
+      recent3m_count: (() => {
+        const pts = chart.data.datasets[0].data.filter(p => p.x >= 33);
+        return pts.length;
+      })(),
+      recent3m_avg: (() => {
+        const pts = chart.data.datasets[0].data.filter(p => p.x >= 33);
+        if (!pts.length) return null;
+        return Math.round(pts.reduce((s, p) => s + p.y, 0) / pts.length);
+      })(),
     }
   };
 }
@@ -1192,7 +1201,8 @@ async function autoGreet() {
   addTypingIndicator();
 
   const context = getChartContext();
-  const greetPrompt = '안녕하세요! 차트와 입지 데이터를 바탕으로 이 단지를 쉽게 설명해 주세요. 전문 용어 없이 2~3문장으로, 가장 눈에 띄는 점 한 가지를 먼저 말해주세요.';
+  const { recent3m_count, recent3m_avg, latest_complex } = context.stats;
+  const greetPrompt = `안녕하세요! 아래 순서로 이 단지를 설명해 주세요.\n1. 최근 3개월 거래 건수(${recent3m_count}건)와 평균 평단가(${recent3m_avg ? recent3m_avg.toLocaleString() + '만원/평' : '데이터 없음'})를 먼저 언급해 주세요.\n2. 현재 평단가(${latest_complex ? latest_complex.toLocaleString() + '만원/평' : '데이터 없음'})가 동네 평균 대비 어떤지 한 문장으로 설명해 주세요.\n3. 전문 용어 없이 3문장 이내로 작성해 주세요.`;
 
   let replyText = null;   // LLM plain-text reply (needs escapeHtml before innerHTML)
   let replyHtml = null;   // Fallback hardcoded HTML (already safe, no escaping needed)
