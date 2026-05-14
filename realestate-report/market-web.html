@@ -860,13 +860,16 @@ const chart = new Chart(ctx, {
         min: -0.5,
         max: 35.5,
         grid: { color: '#E4E8F2' },
+        afterBuildTicks: axis => {
+          axis.ticks = monthLabels
+            .map((lbl, i) => lbl.endsWith('.01') ? { value: i } : null)
+            .filter(Boolean);
+        },
         ticks: {
           font: { family: 'Pretendard', size: 11 },
           maxRotation: 0,
-          autoSkip: false,
           callback: function(val) {
             const idx = Math.round(val);
-            if (Math.abs(val - idx) > 0.01) return '';
             const label = monthLabels[idx];
             if (label && label.endsWith('.01')) return label.split('.')[0] + '년';
             return '';
