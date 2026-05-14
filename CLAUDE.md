@@ -2,8 +2,10 @@
 
 ## 프로젝트 개요
 
-Data 기반 Multi-Agent 부동산 투자 자문 시스템 (KAIST IMMS MBA).
-CFO·CSO·투자컨설턴트 3명의 AI C-suite가 실거래 데이터 기반으로 토론하며 투자 의사결정을 돕는다.
+이 레포는 두 개의 서비스를 포함한다:
+
+1. **Multi-Agent 투자 자문 시스템** — CFO·CSO·투자컨설턴트 3명의 AI C-suite가 실거래 데이터 기반으로 토론하며 투자 의사결정을 돕는다 (KAIST IMMS MBA).
+2. **VerifyHome** — 주소 하나로 아파트 실거래가를 시각화하고 AI와 시세를 상담하는 웹 서비스. Render.com에 배포됨.
 
 ## 작업 방식
 
@@ -38,21 +40,35 @@ CFO·CSO·투자컨설턴트 3명의 AI C-suite가 실거래 데이터 기반으
 - **언어**: Python 3.10+
 - **LLM**: Anthropic Claude API (`claude-sonnet-4-6`), `AsyncAnthropic`
 - **테스트**: pytest (260+ tests), API 키 없이 전체 로직 검증 (E2E + 경계 + 할루시네이션 가드)
-- **프론트엔드**: Streamlit
+- **멀티에이전트 프론트엔드**: Streamlit
+- **VerifyHome 백엔드**: FastAPI (`src/market_api.py`), uvicorn
+- **VerifyHome 프론트엔드**: Vanilla JS + Chart.js (HTML 단일 파일)
+- **VerifyHome DB**: SQLite (`src/apartment.db`) — 단지 좌표 10,239개
+- **배포**: Render.com (Web Service, Python)
 - **의존성**: requirements.txt 참조
 
 ## 프로젝트 구조
 
 ```
-src/           # 소스 코드 (main.py CLI, app.py Streamlit UI)
-agents/        # 페르소나 명세서 (*.md) — 프롬프트 튜닝은 여기서
-tests/         # pytest 테스트 스위트 (260+ tests)
-meetings/      # 회의록 저장 디렉토리
-MANIFESTO.md   # 핵심 가치와 설계 원칙
-WHYTREE.md     # Why Tree 분석
-PREMORTEM.md   # 사전 부검
-COMPARISON.md  # ChatGPT 비교 시연 자료
-glossary.md    # 용어집
+src/
+  main.py              # 멀티에이전트 CLI 엔트리포인트
+  app.py               # Streamlit Web UI
+  market_api.py        # VerifyHome FastAPI 서버 (HTML 서빙 + /api/* 라우트)
+  apartment.db         # 단지 좌표 DB (SQLite, 10,239개 단지, ~1.7MB)
+  ...                  # 멀티에이전트 모듈들
+
+realestate-report/
+  page0-web.html       # VerifyHome 랜딩 페이지 (주소 검색)
+  market-web.html      # VerifyHome 시세 분석 페이지 (차트 + AI 챗봇)
+  IA.md                # Information Architecture 문서
+  api-schema.md        # API 스키마 문서
+  market-chat-prompt.md  # AI 챗봇 프롬프트 설계
+
+agents/                # 멀티에이전트 페르소나 명세서 (*.md)
+tests/                 # pytest 테스트 스위트 (260+ tests)
+meetings/              # 멀티에이전트 회의록 저장 디렉토리
+render.yaml            # Render.com 배포 설정
+MANIFESTO.md           # 핵심 가치와 설계 원칙
 ```
 
 ## 핵심 규칙
@@ -63,6 +79,17 @@ glossary.md    # 용어집
 - 모든 수치에는 출처를 명시한다 (MANIFESTO 핵심 가치 1번).
 
 ## 주요 모듈
+
+### VerifyHome
+
+| 모듈 | 역할 |
+|------|------|
+| `src/market_api.py` | FastAPI 서버 — `/`, `/market` HTML 서빙 + `/api/*` 엔드포인트 |
+| `src/apartment.db` | 단지 좌표 SQLite DB (sgg_cd, umd_nm, apt_nm, lat, lng) |
+| `realestate-report/page0-web.html` | 랜딩 페이지 — 주소 자동완성 + 평형 선택 |
+| `realestate-report/market-web.html` | 시세 분석 페이지 — Chart.js 산점도 + AI 챗봇 |
+
+### 멀티에이전트
 
 | 모듈 | 역할 |
 |------|------|
@@ -79,7 +106,22 @@ glossary.md    # 용어집
 | `src/charts.py` | Plotly 시각화 (8종 차트) |
 | `src/archive.py` | 회의록 저장 + 세션 체크포인트 + 과거 회의 검색 |
 
-## 테스트 실행
+## 로컬 실행
+
+### VerifyHome
+
+```bash
+uvicorn src.market_api:app --reload --port 8000
+# http://localhost:8000/ → 랜딩
+# http://localhost:8000/market → 시세 분석
+```
+
+환경 변수 필요:
+- `ANTHROPIC_API_KEY` — AI 챗봇 응답 생성
+- `DATA_GO_KR_API_KEY` — 국토교통부 실거래가 API
+- `JUSO_CONFIRM_KEY` — 도로명주소 API (주소 자동완성)
+
+### 멀티에이전트 시스템
 
 ```bash
 pytest tests/ -v              # 전체 테스트 (260+)
@@ -103,9 +145,13 @@ streamlit run src/app.py      # Streamlit Web UI
 
 ## 환경 변수
 
-- `ANTHROPIC_API_KEY`: 실제 API 데모 및 에이전트 응답 생성에 필수. 없으면 Mock 데모만 가능.
-- `DATA_GO_KR_API_KEY`: 국토교통부 실거래가 API 호출에 필요. 없으면 샘플 데���터 자동 fallback.
-- API 키가 없을 때는 즉시 사용자에게 알리고, 조용히 mock으로 대체하지 않는다.
+| 변수 | 용도 | 없을 때 |
+|------|------|---------|
+| `ANTHROPIC_API_KEY` | AI 에이전트 응답 생성 (멀티에이전트 + VerifyHome 챗봇) | Mock 데모만 가능 |
+| `DATA_GO_KR_API_KEY` | 국토교통부 실거래가 API | 샘플 데이터 자동 fallback |
+| `JUSO_CONFIRM_KEY` | 도로명주소 API (VerifyHome 주소 자동완성) | 자동완성 비활성화 |
+
+API 키가 없을 때는 즉시 사용자에게 알리고, 조용히 mock으로 대체하지 않는다.
 
 ## Custom Skills
 

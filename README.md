@@ -1,4 +1,61 @@
-# Data 기반 Multi-Agent 부동산 투자 자문 시스템
+# VerifyHome + Multi-Agent 부동산 분석 시스템
+
+이 레포는 두 개의 서비스를 포함합니다.
+
+---
+
+## VerifyHome — 실거래가 시각화 + AI 시세 상담
+
+> 주소 하나로 근처 동네 같은 평형 실거래가 비교 + AI와 가격 차이 이유를 상담하세요.
+
+**배포**: Render.com에서 운영 중
+
+### Quick Start (로컬)
+
+```bash
+pip install -r requirements.txt
+
+# 환경 변수 설정
+export ANTHROPIC_API_KEY="sk-ant-..."
+export DATA_GO_KR_API_KEY="..."
+export JUSO_CONFIRM_KEY="..."
+
+uvicorn src.market_api:app --reload --port 8000
+# → http://localhost:8000
+```
+
+### 구조
+
+```
+realestate-report/
+  page0-web.html   # 랜딩 — 주소 검색 + 평형 선택
+  market-web.html  # 시세 분석 — 산점도 차트 + AI 챗봇
+src/
+  market_api.py    # FastAPI 서버 (HTML 서빙 + /api/* 라우트)
+  apartment.db     # 단지 좌표 DB (SQLite, 10,239개)
+render.yaml        # Render.com 배포 설정
+```
+
+### 주요 API
+
+| 엔드포인트 | 설명 |
+|-----------|------|
+| `GET /` | 랜딩 페이지 |
+| `GET /market` | 시세 분석 페이지 |
+| `GET /api/address-search` | 주소 자동완성 (도로명주소 API) |
+| `GET /api/apt-sizes` | 단지 평형 목록 |
+| `GET /api/market-data` | 실거래가 데이터 (산점도 + 이동평균) |
+| `POST /api/chat` | AI 챗봇 (Claude streaming) |
+
+### Render 배포
+
+1. [render.com](https://render.com) 가입 → New Web Service → GitHub 레포 연결
+2. 환경변수 3개 입력: `ANTHROPIC_API_KEY`, `DATA_GO_KR_API_KEY`, `JUSO_CONFIRM_KEY`
+3. `render.yaml` 자동 감지 → Deploy
+
+---
+
+## Multi-Agent 부동산 투자 자문 시스템
 
 > "강남 오피스텔 수익률 3%면 낮은 거 아냐?" 한마디에,
 > CFO·CSO·투자컨설턴트 세 명의 C-suite가 실거래 데이터를 놓고 토론합니다.
@@ -314,21 +371,33 @@ buildteam/
 
 ## 배포
 
-### Streamlit Cloud (가장 간단)
+### VerifyHome — Render.com
+
+`render.yaml` 기반 자동 배포. `main` 브랜치 push 시 자동 재배포.
+
+```yaml
+startCommand: uvicorn src.market_api:app --host 0.0.0.0 --port $PORT
+```
+
+### 멀티에이전트 — Streamlit Cloud
 
 1. GitHub 리포지토리를 [Streamlit Cloud](https://share.streamlit.io)에 연결
 2. Main file path: `src/app.py`
 3. Secrets에 환경변수 추가:
    ```
    ANTHROPIC_API_KEY = "sk-ant-..."
-   DATA_GO_KR_API_KEY = "..."  # 선택사항 (없으면 샘플 데이터 사용)
+   DATA_GO_KR_API_KEY = "..."
    ```
 
 ### 로컬 실행
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env  # API 키 입력
+
+# VerifyHome
+uvicorn src.market_api:app --reload --port 8000
+
+# 멀티에이전트
 streamlit run src/app.py
 ```
 
