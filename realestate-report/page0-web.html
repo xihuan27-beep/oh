@@ -411,7 +411,7 @@
       return;
     }
 
-    let url = 'market-web.html?address=' + encodeURIComponent(addr);
+    let url = '/market?address=' + encodeURIComponent(addr);
     url += '&lawd_cd=' + selectedJuso.admCd.slice(0, 5);
     url += '&apt_name=' + encodeURIComponent(selectedJuso.bdNm);
     const dong = extractDong(selectedJuso.jibunAddr);
