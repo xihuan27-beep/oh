@@ -274,11 +274,14 @@ def normalize_apt_name(name: str) -> str:
 
 
 def filter_apt(items: list[dict], apt_name: str) -> list[dict]:
-    """단지명 매칭 (정규화된 이름으로 부분 일치)"""
-    core = normalize_apt_name(apt_name)
+    """단지명 매칭 (공백 제거 후 정규화된 이름으로 부분 일치)
+    JUSO API와 MOLIT API 간 공백 표기 차이 ('래미안 신반포 팰리스' vs '래미안신반포팰리스')를
+    공백을 제거하고 비교함으로써 흡수한다.
+    """
+    core = normalize_apt_name(apt_name).replace(" ", "")
     if not core:  # 빈 문자열이면 전체 매칭을 막음 (e.g. "아파트"만 입력 시 방지)
         return []
-    return [i for i in items if core in i["apt_nm"]]
+    return [i for i in items if core in i["apt_nm"].replace(" ", "")]
 
 
 def filter_area(items: list[dict], min_p: float = 18, max_p: float = 26) -> list[dict]:
