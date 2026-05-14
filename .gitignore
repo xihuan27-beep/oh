@@ -37,3 +37,6 @@ build/
 # Phase A: user investment profiles — private, except sample
 profiles/*.json
 !profiles/example.json
+
+# Large binary data files
+src/apartment.db.bak

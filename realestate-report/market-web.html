@@ -1,0 +1,1342 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VerifyHome — 시세 분석</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #F0F2F8;
+    --surface: #FFFFFF;
+    --navy:  #0F1B35;
+    --navy2: #1A2E52;
+    --blue:  #1E5EFF;
+    --blue-light: #EEF3FF;
+    --green: #00B85E;
+    --green-light: #E6F9F0;
+    --orange: #FF6B35;
+    --text-primary: #0F1B35;
+    --text-secondary: #5A6476;
+    --text-muted: #9AA2B4;
+    --border: #E4E8F2;
+    --radius-sm: 10px;
+    --radius-md: 16px;
+    --radius-lg: 20px;
+    --shadow-sm: 0 1px 4px rgba(15,27,53,0.06);
+    --shadow-md: 0 4px 20px rgba(15,27,53,0.09);
+    --topnav-h: 60px;
+  }
+
+  html, body { height: 100vh; overflow: hidden; }
+  html { font-family: 'Pretendard', -apple-system, sans-serif; background: var(--bg); color: var(--text-primary); font-size: 15px; }
+  body { display: flex; flex-direction: column; }
+
+  /* ── Top Nav ── */
+  .topnav {
+    position: sticky; top: 0; z-index: 100;
+    background: var(--navy);
+    padding: 0 28px;
+    display: flex; align-items: center;
+    height: var(--topnav-h);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.18);
+    flex-shrink: 0;
+  }
+  .topnav-logo {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 16px; font-weight: 800; letter-spacing: -0.3px;
+    margin-right: 24px; text-decoration: none;
+  }
+  .logo-verify { color: var(--blue); }
+  .logo-home   { color: #fff; }
+  .topnav-addr {
+    flex: 1;
+    font-size: 13px; color: rgba(255,255,255,0.65);
+    display: flex; align-items: center; gap: 8px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .topnav-addr-val { color: #fff; font-weight: 600; }
+  .topnav-sep { color: rgba(255,255,255,0.3); }
+  .topnav-back {
+    margin-left: auto; flex-shrink: 0;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    color: #fff; font-size: 13px; font-weight: 500;
+    padding: 7px 14px; border-radius: 8px;
+    cursor: pointer; text-decoration: none;
+    transition: background 0.15s;
+  }
+  .topnav-back:hover { background: rgba(255,255,255,0.18); }
+
+  /* ── 2-Column Body ── */
+  .page-body {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 60fr 40fr;
+    height: calc(100vh - var(--topnav-h));
+    overflow: hidden;
+  }
+
+  /* ── Left Column ── */
+  .left-col {
+    overflow-y: auto;
+    padding: 28px 20px 48px 28px;
+  }
+
+  /* ── Summary Strip ── */
+  .summary-strip {
+    background: var(--navy);
+    border-radius: var(--radius-lg);
+    padding: 22px 28px;
+    display: flex; align-items: center; gap: 32px;
+    margin-bottom: 20px;
+  }
+  .summary-main { flex: 1; min-width: 0; }
+  .summary-tag {
+    display: inline-block;
+    background: rgba(30,94,255,0.25);
+    color: var(--blue-light);
+    font-size: 11px; font-weight: 700;
+    padding: 3px 9px; border-radius: 5px;
+    margin-bottom: 8px; letter-spacing: 0.3px;
+  }
+  .summary-addr {
+    font-size: 20px; font-weight: 800; color: #fff;
+    letter-spacing: -0.4px; margin-bottom: 3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .summary-sub { font-size: 13px; color: rgba(255,255,255,0.5); }
+  .summary-stats { display: flex; gap: 22px; flex-shrink: 0; }
+  .stat-item { text-align: center; }
+  .stat-val {
+    font-size: 22px; font-weight: 900; color: #fff;
+    letter-spacing: -0.6px; line-height: 1;
+  }
+  .stat-val.up { color: #FF6B6B; }
+  .stat-label { font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 3px; }
+  .stat-divider { width: 1px; background: rgba(255,255,255,0.12); }
+
+  /* ── Chart Card ── */
+  .chart-card {
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    padding: 24px 24px 18px;
+    box-shadow: var(--shadow-md);
+    margin-bottom: 16px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .chart-header {
+    display: flex; align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .chart-title { font-size: 15px; font-weight: 700; color: var(--navy); }
+  .chart-subtitle { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+  .pct-badge {
+    display: inline-block;
+    margin-top: 7px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 12px; font-weight: 700; letter-spacing: 0.1px;
+  }
+  .pct-badge.cheap  { background: #E6F9F0; color: #007A3D; }
+  .pct-badge.mid    { background: #F3F4F8; color: var(--text-secondary); }
+  .pct-badge.pricey { background: #FFF0EE; color: #C0392B; }
+  .chart-legend {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+    font-size: 12px; color: var(--text-secondary);
+  }
+  .legend-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    display: inline-block; margin-right: 4px;
+  }
+  .chart-wrap { position: relative; height: 240px; }
+
+  /* ── Dong Selector ── */
+  .compare-section { margin-bottom: 16px; }
+  .compare-btn {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface);
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px 22px;
+    cursor: pointer;
+    width: 100%;
+    font-size: 14px; font-weight: 600; color: var(--blue);
+    box-shadow: var(--shadow-sm);
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .compare-btn:hover { border-color: var(--blue); background: var(--blue-light); }
+  .compare-btn-icon { font-size: 16px; }
+
+  .dong-panel {
+    display: none;
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    box-shadow: var(--shadow-md);
+    margin-top: 10px;
+  }
+  .dong-panel.open { display: block; }
+  .dong-panel-title {
+    font-size: 13px; font-weight: 700; color: var(--text-secondary);
+    margin-bottom: 12px;
+  }
+  .dong-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .dong-chip {
+    padding: 7px 16px;
+    border-radius: 30px;
+    border: 1.5px solid var(--border);
+    font-size: 13px; font-weight: 500;
+    cursor: pointer; color: var(--text-secondary);
+    background: var(--surface);
+    transition: all 0.15s;
+  }
+  .dong-chip:hover { border-color: var(--blue); color: var(--blue); }
+  .dong-chip.active {
+    background: var(--blue); border-color: var(--blue);
+    color: #fff; font-weight: 600;
+  }
+
+  .disclaimer {
+    text-align: center; font-size: 11px;
+    color: var(--text-muted); margin-top: 24px;
+  }
+
+  /* ── Right Column: Chat Panel ── */
+  .right-col {
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid var(--border);
+    background: var(--surface);
+    overflow: hidden;
+    min-height: 0;
+    height: 100%;
+  }
+
+  .chat-panel {
+    display: flex; flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .chat-header {
+    flex-shrink: 0;
+    display: flex; align-items: center; gap: 10px;
+    padding: 18px 20px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .chat-header-icon {
+    width: 36px; height: 36px;
+    background: var(--blue-light);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  .chat-header-info {}
+  .chat-header-title {
+    font-size: 14px; font-weight: 800; color: var(--navy);
+    letter-spacing: -0.2px;
+  }
+  .chat-header-sub {
+    font-size: 11px; color: var(--text-muted); margin-top: 1px;
+  }
+  .chat-status {
+    margin-left: auto;
+    display: flex; align-items: center; gap: 5px;
+    font-size: 11px; color: var(--green); font-weight: 600;
+  }
+  .chat-status-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--green);
+  }
+
+  .chat-messages {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 16px 16px 8px;
+    display: flex; flex-direction: column; gap: 10px;
+    scroll-behavior: smooth;
+  }
+
+  /* Message bubbles */
+  .msg { display: flex; flex-direction: column; max-width: 90%; gap: 3px; }
+  .msg.bot { align-self: flex-start; }
+  .msg.user { align-self: flex-end; }
+
+  .msg-label {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.3px;
+    color: var(--text-muted);
+    padding: 0 4px;
+  }
+  .msg.user .msg-label { text-align: right; }
+
+  .msg-bubble {
+    padding: 10px 14px;
+    border-radius: 14px;
+    font-size: 13.5px; line-height: 1.65;
+  }
+  .msg.bot .msg-bubble {
+    background: var(--blue-light);
+    color: var(--navy);
+    border-bottom-left-radius: 4px;
+  }
+  .msg.bot.system .msg-bubble {
+    background: #F6F7FA;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    font-size: 12.5px;
+  }
+  .msg.user .msg-bubble {
+    background: var(--navy);
+    color: #fff;
+    border-bottom-right-radius: 4px;
+  }
+  .msg-bubble strong { font-weight: 700; }
+  .msg.bot .msg-bubble strong { color: var(--blue); }
+  .msg.user .msg-bubble strong { color: #7FBFFF; }
+
+  /* Typing indicator */
+  .typing-indicator .msg-bubble {
+    display: flex; gap: 5px; align-items: center;
+    padding: 12px 16px;
+  }
+  .typing-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--blue);
+    animation: typingPulse 1.2s infinite;
+  }
+  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes typingPulse {
+    0%, 60%, 100% { opacity: 0.25; transform: scale(0.85); }
+    30% { opacity: 1; transform: scale(1); }
+  }
+
+  /* Chat Input */
+  .chat-input-wrap {
+    flex-shrink: 0;
+    padding: 12px 14px 14px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    display: flex; gap: 8px; align-items: flex-end;
+  }
+  .chat-input {
+    flex: 1;
+    height: 42px;
+    padding: 0 14px;
+    border: 1.5px solid var(--border);
+    border-radius: 12px;
+    font-family: inherit; font-size: 13.5px;
+    color: var(--navy); background: #fff;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    resize: none;
+  }
+  .chat-input::placeholder { color: var(--text-muted); }
+  .chat-input:focus {
+    border-color: var(--blue);
+    box-shadow: 0 0 0 3px rgba(30,94,255,0.1);
+  }
+  .chat-send-btn {
+    flex-shrink: 0;
+    width: 42px; height: 42px;
+    background: var(--blue); border: none;
+    border-radius: 12px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s, transform 0.1s;
+  }
+  .chat-send-btn:hover { background: #1650e0; }
+  .chat-send-btn:active { transform: scale(0.93); }
+  .chat-send-btn svg { fill: #fff; width: 16px; height: 16px; }
+  .chat-send-btn:disabled { background: var(--border); cursor: not-allowed; }
+
+  /* PDF Button */
+  .chat-pdf-btn {
+    margin-left: 10px; flex-shrink: 0;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 12px; font-weight: 600;
+    padding: 5px 10px; border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+  }
+  .chat-pdf-btn:hover { background: var(--blue-light); color: var(--blue); border-color: var(--blue); }
+  .chat-pdf-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Print */
+  #printArea { display: none; }
+  @media print {
+    body > * { display: none !important; }
+    #printArea {
+      display: block !important;
+      font-family: 'Pretendard', sans-serif;
+      color: #0F1B35;
+      padding: 40px;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+    #printArea h1 { font-size: 22px; font-weight: 900; margin-bottom: 4px; }
+    #printArea .print-meta { color: #5A6476; font-size: 13px; margin-bottom: 32px; }
+    #printArea h2 { font-size: 15px; font-weight: 800; margin: 24px 0 10px; border-bottom: 2px solid #E4E8F2; padding-bottom: 6px; }
+    #printArea .summary-box { background: #F0F2F8; border-radius: 10px; padding: 16px 20px; margin-bottom: 24px; }
+    #printArea .msg-item { margin-bottom: 12px; }
+    #printArea .msg-item .role { font-size: 11px; font-weight: 700; color: #9AA2B4; display: block; margin-bottom: 2px; }
+    #printArea .msg-item.user .role { color: #1E5EFF; }
+    #printArea .msg-item p { margin: 0; }
+    #printArea .print-footer { margin-top: 40px; font-size: 11px; color: #9AA2B4; text-align: center; }
+  }
+
+  /* Amenity Strip */
+  .amenity-strip {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 16px;
+    background: var(--blue-light);
+    border-radius: 12px;
+    border: 1px solid #d0dcff;
+  }
+  .amenity-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-right: 4px;
+  }
+  .amenity-chip {
+    font-size: 13px;
+    color: var(--navy);
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 4px 12px;
+    white-space: nowrap;
+  }
+  .amenity-chip strong { color: var(--blue); }
+  .amenity-chip.bad { background: #fff8f0; border-color: #f0a060; color: #7a3a00; }
+  .amenity-chip.bad strong { color: #c05010; }
+  .amenity-mock { font-size: 11px; color: var(--text-muted); }
+
+  /* Quick questions */
+  .quick-questions {
+    padding: 0 14px 10px;
+    display: flex; flex-wrap: wrap; gap: 6px;
+  }
+  .quick-q {
+    padding: 5px 12px;
+    border: 1px solid var(--blue);
+    border-radius: 20px;
+    font-size: 12px; color: var(--blue); font-weight: 500;
+    cursor: pointer; background: #fff;
+    transition: background 0.12s, color 0.12s;
+    white-space: nowrap;
+  }
+  .quick-q:hover { background: var(--blue); color: #fff; }
+</style>
+</head>
+<body>
+
+<!-- Top Nav -->
+<nav class="topnav">
+  <a href="page0-web.html" class="topnav-logo">
+    <span class="logo-verify">Verify</span><span class="logo-home">Home</span>
+  </a>
+  <div class="topnav-addr">
+    <span id="topnavAddr">—</span>
+  </div>
+  <a href="page0-web.html" class="topnav-back">← 주소 다시 입력</a>
+</nav>
+
+<div class="page-body">
+
+  <!-- ── Left Column ── -->
+  <div class="left-col">
+
+    <!-- Summary Strip -->
+    <div class="summary-strip">
+      <div class="summary-main">
+        <div class="summary-tag">시세 분석</div>
+        <div class="summary-addr" id="summaryAddr">—</div>
+        <div class="summary-sub">실거래가 기준 · 최근 6개월</div>
+      </div>
+      <div class="summary-stats">
+        <div class="stat-item">
+          <div class="stat-val up" id="statComplex">—</div>
+          <div class="stat-label">단지 6개월</div>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <div class="stat-val" id="statDong">—</div>
+          <div class="stat-label">동 평균</div>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <div class="stat-val up" id="statVsDong">—</div>
+          <div class="stat-label">동 대비 초과</div>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <div class="stat-val" id="statPeak">—</div>
+          <div class="stat-label">고점 대비</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chart Card -->
+    <div class="chart-card">
+      <div class="chart-header">
+        <div>
+          <div class="chart-title" id="chartTitle">평단가 추이</div>
+          <div class="chart-subtitle">단위: 만원/평 · 실거래 기준</div>
+          <div class="pct-badge mid" id="percentileBadge">계산 중…</div>
+        </div>
+        <div class="chart-legend" id="chartLegend">
+          <span><span class="legend-dot" style="background:#1E5EFF"></span>래미안아파트 (단지)</span>
+          <span><span class="legend-dot" style="background:#00B85E"></span>역삼동 평균</span>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="mainChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Amenity Strip -->
+    <div class="amenity-strip" id="amenityStrip" style="display:none"></div>
+
+    <!-- Compare Section -->
+    <div class="compare-section">
+      <button class="compare-btn" onclick="toggleDongPanel()">
+        <span class="compare-btn-icon">＋</span>
+        주변 시세와 비교하기 — 비교할 동을 선택하세요
+      </button>
+      <div class="dong-panel" id="dongPanel">
+        <div class="dong-panel-title" id="dongPanelTitle">같은 구 동 선택 (복수 가능)</div>
+        <div class="dong-chips" id="dongChips">
+          <div class="dong-chip" onclick="toggleDong(this, '논현동')">논현동</div>
+          <div class="dong-chip" onclick="toggleDong(this, '삼성동')">삼성동</div>
+          <div class="dong-chip" onclick="toggleDong(this, '대치동')">대치동</div>
+          <div class="dong-chip" onclick="toggleDong(this, '청담동')">청담동</div>
+          <div class="dong-chip" onclick="toggleDong(this, '압구정동')">압구정동</div>
+          <div class="dong-chip" onclick="toggleDong(this, '개포동')">개포동</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="disclaimer">본 데이터는 국토교통부 실거래가 공개시스템 기반입니다 · 시연용 시안</div>
+
+  </div><!-- /left-col -->
+
+  <!-- ── Right Column: Chatbot ── -->
+  <div class="right-col">
+    <div class="chat-panel">
+
+      <!-- Chat Header -->
+      <div class="chat-header">
+        <div class="chat-header-icon">💬</div>
+        <div class="chat-header-info">
+          <div class="chat-header-title">시세 AI</div>
+          <div class="chat-header-sub">차트 데이터 기반 분석</div>
+        </div>
+        <button class="chat-pdf-btn" id="pdfBtn" onclick="savePDF()" title="대화 내용 요약 저장">저장</button>
+      </div>
+
+      <!-- Messages -->
+      <div class="chat-messages" id="chatMessages"></div>
+
+      <!-- Quick Questions -->
+      <div class="quick-questions" id="quickQuestions">
+        <div class="quick-q" onclick="askQuick('왜 주변 같은 평형대보다 비싸요?')">왜 주변보다 비싸요?</div>
+        <div class="quick-q" onclick="askQuick('이 동네 교통은 어때요?')">교통은 어때요?</div>
+        <div class="quick-q" onclick="askQuick('이 동네 학군은 어때요?')">학군은 어때요?</div>
+        <div class="quick-q" onclick="askQuick('주변 동이랑 가격 차이 나는 이유가 뭔가요?')">가격 차이 이유가 뭔가요?</div>
+      </div>
+
+      <!-- Input -->
+      <div class="chat-input-wrap">
+        <input
+          class="chat-input"
+          type="text"
+          id="chatInput"
+          placeholder="차트에 대해 질문하세요..."
+          autocomplete="off"
+          onkeydown="if(event.key==='Enter' && !event.shiftKey){ event.preventDefault(); sendMessage(); }"
+        >
+        <button class="chat-send-btn" id="sendBtn" onclick="sendMessage()" aria-label="전송">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M2 21l21-9L2 3v7l15 2-15 2z"/>
+          </svg>
+        </button>
+      </div>
+
+    </div>
+  </div><!-- /right-col -->
+
+</div><!-- /page-body -->
+
+<div id="printArea"></div>
+
+<script>
+// ── Init: read address from URL params ──
+function initPage() {
+  const params = new URLSearchParams(window.location.search);
+  const address  = params.get('address')  || '역삼동 래미안아파트';
+  const lawd_cd  = params.get('lawd_cd')  || null;
+  const apt_name = params.get('apt_name') || null;
+  const dong     = params.get('dong')     || null;
+  const pyeong   = params.get('pyeong')   ? parseInt(params.get('pyeong')) : null;
+  const entX     = params.get('entX')     ? parseFloat(params.get('entX')) : null;
+  const entY     = params.get('entY')     ? parseFloat(params.get('entY')) : null;
+  const lat      = params.get('lat')      ? parseFloat(params.get('lat'))  : null;
+  const lng      = params.get('lng')      ? parseFloat(params.get('lng'))  : null;
+  const label = pyeong ? `${address} · ${pyeong}평` : address;
+  document.getElementById('topnavAddr').textContent = label;
+  document.getElementById('summaryAddr').textContent = label;
+  if (pyeong) {
+    const band = Math.floor(pyeong / 10) * 10;
+    document.getElementById('chartTitle').textContent = `${band}평형대 평단가 추이`;
+  } else {
+    document.getElementById('chartTitle').textContent = '평단가 추이';
+  }
+  return { address, lawd_cd, apt_name, dong, pyeong, entX, entY, lat, lng };
+}
+const { address: PAGE_ADDRESS, lawd_cd: PAGE_LAWD_CD, apt_name: PAGE_APT_NAME, dong: PAGE_DONG, pyeong: PAGE_PYEONG, entX: PAGE_ENT_X, entY: PAGE_ENT_Y, lat: PAGE_LAT, lng: PAGE_LNG } = initPage();
+
+// ── Mock Data (fallback) ──
+const MOCK_MONTHS = (function() {
+  const months = [];
+  const now = new Date();
+  for (let i = 35; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    months.push(`${y}.${m}`);
+  }
+  return months;
+})();
+const MOCK_COMPLEX = [3800,3850,3900,3950,4000,4050,4100,4150,4200,4250,4300,4350,4400,4450,4500,4550,4600,4650,4700,4750,4850,4950,5050,5100,5150,5200,5250,5300,5350,5400,5500,5550,5600,5650,5700,5800];
+const MOCK_DONG    = [3700,3750,3800,3850,3900,3950,4000,4050,4100,4150,4200,4250,4300,4350,4400,4450,4500,4550,4600,4650,4750,4850,4900,4950,5000,5050,5100,5150,5200,5250,5300,5350,5400,5450,5480,5500];
+const MOCK_VOLUME  = [18,12,25,30,35,22,15,10,28,32,20,14,22,18,38,42,30,16,12,8,24,28,35,40,22,14,18,32,38,20,10,15,28,34,22,16];
+
+const DONG_COLORS = ['#FF6B35','#9B59B6','#F39C12','#E74C3C','#1ABC9C','#95A5A6'];
+
+// 동별 mock 비교 데이터 (API 실패 시 fallback) — ma: 이동평균 배열
+const DATA = {
+  '논현동':   { ma: [3500,3520,3550,3580,3600,3650,3700,3750,3800,3820,3850,3900,3950,4000,4050,4100,4150,4200,4250,4300,4350,4400,4450,4500,4550,4600,4650,4700,4730,4750,4800,4820,4850,4880,4900,4920], color: '#FF6B35' },
+  '삼성동':   { ma: [4200,4250,4300,4350,4400,4450,4500,4550,4600,4650,4700,4750,4800,4850,4900,4950,5000,5050,5100,5150,5200,5250,5300,5350,5400,5500,5550,5600,5650,5700,5750,5800,5850,5900,5950,6000], color: '#9B59B6' },
+  '대치동':   { ma: [4700,4750,4800,4850,4900,4950,5000,5050,5100,5150,5200,5250,5300,5350,5400,5450,5500,5550,5600,5650,5700,5750,5800,5900,5950,6000,6050,6100,6150,6200,6250,6300,6330,6350,6380,6400], color: '#F39C12' },
+  '청담동':   { ma: [5700,5750,5800,5850,5900,5950,6000,6050,6100,6150,6200,6250,6300,6350,6400,6450,6500,6550,6600,6650,6700,6750,6800,6850,6900,6950,7000,7050,7100,7150,7200,7230,7250,7270,7290,7300], color: '#E74C3C' },
+  '압구정동': { ma: [6600,6650,6700,6750,6800,6850,6900,6950,7000,7050,7100,7150,7200,7250,7300,7350,7400,7450,7500,7600,7700,7800,7900,8000,8050,8100,8150,8200,8250,8300,8400,8500,8550,8600,8650,8700], color: '#1ABC9C' },
+  '개포동':   { ma: [4000,4050,4100,4150,4200,4250,4300,4350,4400,4450,4500,4550,4600,4650,4700,4750,4800,4820,4850,4880,4900,4920,4950,4980,5000,5020,5050,5100,5150,5200,5230,5260,5290,5320,5360,5400], color: '#95A5A6' },
+};
+
+// mock scatter: 월별 평균에 노이즈 추가해서 건별 점 생성
+const MOCK_COMPLEX_RAW = MOCK_COMPLEX.flatMap((avg, mi) => {
+  const n = Math.max(1, Math.min(MOCK_VOLUME[mi] || 1, 8));
+  return Array.from({length: n}, () => ({
+    mi, v: Math.round(avg * (1 + (Math.random() - 0.5) * 0.08))
+  }));
+});
+const MOCK_DONG_RAW = MOCK_DONG.flatMap((avg, mi) => {
+  const n = Math.max(1, Math.min((MOCK_VOLUME[mi] || 1) * 2, 12));
+  return Array.from({length: n}, () => ({
+    mi, v: Math.round(avg * (1 + (Math.random() - 0.5) * 0.10))
+  }));
+});
+// mock MA는 월별 평균값을 그대로 사용
+const MOCK_COMPLEX_MA = MOCK_COMPLEX;
+const MOCK_DONG_MA = MOCK_DONG;
+
+// 실API 로드 후 채워지는 값
+let REAL_LAWD_CD = null;
+let REAL_APT_NAME = PAGE_ADDRESS;
+
+// 입지 분석 — 챗봇 컨텍스트에 주입되는 요약 문자열
+let amenitySummary = '';
+// 비교 동별 입지 요약 (동 이름 → 요약 문자열)
+let dongAmenities = {};
+
+// ── 서울 25개 구 × 274개 동 (국토교통부 실거래 API 기준) ──
+const LAWD_GU_NAME = {
+  "11110":"종로구","11140":"중구","11170":"용산구","11200":"성동구",
+  "11215":"광진구","11230":"동대문구","11260":"중랑구","11290":"성북구",
+  "11305":"강북구","11320":"도봉구","11350":"노원구","11380":"은평구",
+  "11410":"서대문구","11440":"마포구","11470":"양천구","11500":"강서구",
+  "11530":"구로구","11545":"금천구","11560":"영등포구","11590":"동작구",
+  "11620":"관악구","11650":"서초구","11680":"강남구","11710":"송파구",
+  "11740":"강동구",
+};
+
+const SEOUL_DONG_MAP = {
+  "11110":["교북동","구기동","내수동","당주동","명륜2가","무악동","사직동","수송동","숭인동","신영동","연지동","익선동","인의동","창신동","평동","평창동","필운동","행촌동","홍파동","효제동"],
+  "11140":["만리동2가","묵정동","순화동","신당동","을지로5가","인현동2가","입정동","정동","중림동","충무로4가","충무로5가","황학동","회현동2가","흥인동"],
+  "11170":["도원동","동자동","문배동","보광동","산천동","서빙고동","신계동","신창동","용문동","용산동5가","원효로1가","원효로3가","원효로4가","이촌동","이태원동","한강로1가","한강로2가","한강로3가","한남동","효창동","후암동"],
+  "11200":["금호동1가","금호동2가","금호동3가","금호동4가","도선동","마장동","사근동","상왕십리동","성수동1가","성수동2가","송정동","옥수동","응봉동","하왕십리동","행당동","홍익동"],
+  "11215":["광장동","구의동","군자동","자양동","중곡동","화양동"],
+  "11230":["답십리동","신설동","용두동","이문동","장안동","전농동","제기동","청량리동","회기동","휘경동"],
+  "11260":["망우동","면목동","묵동","상봉동","신내동","중화동"],
+  "11290":["길음동","돈암동","동소문동4가","동소문동5가","동소문동7가","보문동1가","보문동3가","보문동6가","삼선동2가","상월곡동","석관동","성북동1가","안암동1가","안암동3가","장위동","정릉동","종암동","하월곡동"],
+  "11305":["도봉동","미아동","번동","수유동","우이동"],
+  "11320":["도봉동","방학동","쌍문동","창동"],
+  "11350":["공릉동","상계동","월계동","중계동","하계동"],
+  "11380":["갈현동","구산동","녹번동","대조동","불광동","수색동","신사동","역촌동","응암동","증산동","진관동"],
+  "11410":["남가좌동","냉천동","대현동","북가좌동","북아현동","연희동","영천동","천연동","충정로3가","현저동","홍은동","홍제동"],
+  "11440":["공덕동","노고산동","대흥동","도화동","마포동","망원동","상수동","상암동","서교동","성산동","신공덕동","신수동","신정동","아현동","연남동","염리동","용강동","중동","창전동","토정동","하중동","합정동","현석동"],
+  "11470":["목동","신월동","신정동"],
+  "11500":["가양동","내발산동","등촌동","마곡동","방화동","염창동","화곡동"],
+  "11530":["개봉동","고척동","구로동","신도림동","오류동","온수동","천왕동","항동"],
+  "11545":["가산동","독산동","시흥동"],
+  "11560":["당산동","당산동1가","당산동2가","당산동3가","당산동4가","당산동5가","대림동","도림동","문래동2가","문래동3가","문래동4가","문래동5가","문래동6가","신길동","양평동1가","양평동2가","양평동3가","양평동4가","양평동5가","양평동6가","여의도동","영등포동","영등포동1가","영등포동2가","영등포동3가","영등포동7가","영등포동8가"],
+  "11590":["노량진동","대방동","동작동","본동","사당동","상도동","신대방동","흑석동"],
+  "11620":["남현동","봉천동","사당동","신림동"],
+  "11650":["내곡동","반포동","방배동","서초동","신원동","양재동","우면동","잠원동"],
+  "11680":["개포동","논현동","대치동","도곡동","삼성동","세곡동","수서동","신사동","압구정동","역삼동","일원동","자곡동","청담동"],
+  "11710":["가락동","거여동","마천동","문정동","방이동","삼전동","석촌동","송파동","신천동","오금동","잠실동","장지동","풍납동"],
+  "11740":["강일동","고덕동","길동","둔촌동","명일동","상일동","성내동","암사동","천호동"],
+};
+
+function renderDongChips(lawd_cd, excludeDong, dongCounts = {}) {
+  const MIN_TX = 10;
+  const dongs = (SEOUL_DONG_MAP[lawd_cd] || [])
+    .filter(d => d !== excludeDong && (dongCounts[d] ?? Infinity) >= MIN_TX);
+  const guName = LAWD_GU_NAME[lawd_cd] || '인근';
+  document.getElementById('dongPanelTitle').textContent = `${guName} 동 선택 (복수 가능)`;
+  document.getElementById('dongChips').innerHTML = dongs
+    .map(d => `<div class="dong-chip" onclick="toggleDong(this,'${d}')">${d}</div>`)
+    .join('');
+}
+
+// ── Chart helpers ──
+function updateChartStats(complexData) {
+  const valid = (complexData || []).filter(v => v != null && !isNaN(v));
+  if (!valid.length) return;
+
+  const current = valid[valid.length - 1];
+  const max = Math.max(...valid);
+  const sorted = [...valid].sort((a, b) => a - b);
+
+  // ① 퍼센타일
+  const rank = sorted.filter(v => v <= current).length;
+  const pct = Math.round((rank / sorted.length) * 100);
+  const badge = document.getElementById('percentileBadge');
+  if (pct <= 25) {
+    badge.className = 'pct-badge cheap';
+    badge.textContent = `하위 ${pct}% — 저렴 구간`;
+  } else if (pct >= 75) {
+    badge.className = 'pct-badge pricey';
+    badge.textContent = `상위 ${100 - pct + 1}% — 고점 근처`;
+  } else {
+    badge.className = 'pct-badge mid';
+    badge.textContent = `중간 구간 (${pct} 퍼센타일)`;
+  }
+
+  // ③ 고점 대비
+  const peakDiff = ((current - max) / max) * 100;
+  const peakEl = document.getElementById('statPeak');
+  peakEl.textContent = (peakDiff >= 0 ? '+' : '') + peakDiff.toFixed(1) + '%';
+  peakEl.className = 'stat-val' + (peakDiff >= -2 ? ' up' : '');
+}
+
+// ② 구간 배경색 플러그인 (하위 25% 녹색, 상위 25% 적색)
+const zoneBgPlugin = {
+  id: 'zoneBg',
+  beforeDraw(chart) {
+    const { ctx, chartArea, scales } = chart;
+    if (!chartArea) return;
+    const data = complexMaValues.filter(v => v != null && !isNaN(v) && v > 0);
+    if (!data || data.length < 4) return;
+    const sorted = [...data].sort((a, b) => a - b);
+    const p25 = sorted[Math.floor(sorted.length * 0.25)];
+    const p75 = sorted[Math.floor(sorted.length * 0.75)];
+    const y25 = scales.y.getPixelForValue(p25);
+    const y75 = scales.y.getPixelForValue(p75);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(chartArea.left, chartArea.top, chartArea.width, chartArea.height);
+    ctx.clip();
+    // 저렴 구간 (p25 아래) — 녹색
+    ctx.fillStyle = 'rgba(0,184,94,0.07)';
+    ctx.fillRect(chartArea.left, y25, chartArea.width, chartArea.bottom - y25);
+    // 고점 구간 (p75 위) — 적색
+    ctx.fillStyle = 'rgba(231,76,60,0.07)';
+    ctx.fillRect(chartArea.left, chartArea.top, chartArea.width, y75 - chartArea.top);
+    ctx.restore();
+  }
+};
+
+// ── Chart helpers ──
+
+// x축 레이블 배열 (월별 "2024.01" 형식) — loadRealData 시 교체됨
+let monthLabels = [...MOCK_MONTHS];
+// MA 값 — 챗봇 컨텍스트 및 통계 계산용 (차트 데이터셋에서 분리)
+let complexMaValues = [...MOCK_COMPLEX_MA];
+let dongMaValues    = [...MOCK_DONG_MA];
+
+function applyJitter(rawPoints) {
+  return rawPoints.map(d => ({ x: d.mi + (Math.random() - 0.5) * 0.5, y: d.v }));
+}
+
+function makeScatterDataset(label, rawPoints, color) {
+  return {
+    type: 'scatter',
+    label,
+    data: applyJitter(rawPoints),
+    backgroundColor: color + '90',
+    borderColor: 'transparent',
+    pointRadius: 4,
+    pointHoverRadius: 6,
+    order: 1,
+  };
+}
+
+function makeMaDataset(label, maValues, color, isBold = false) {
+  return {
+    type: 'line',
+    label,
+    data: maValues.map((v, i) => ({ x: i, y: v })),
+    borderColor: color,
+    backgroundColor: 'transparent',
+    borderWidth: isBold ? 3 : 2,
+    pointRadius: 0,
+    pointHoverRadius: 4,
+    tension: 0.4,
+    fill: false,
+    spanGaps: false,  // 거래 2건 미만 구간 선 끊김
+    order: 0,
+  };
+}
+
+// ── Chart ──
+const ctx = document.getElementById('mainChart').getContext('2d');
+const chart = new Chart(ctx, {
+  type: 'scatter',
+  data: {
+    datasets: [
+      makeScatterDataset(PAGE_ADDRESS, MOCK_COMPLEX_RAW, '#1E5EFF'),
+      makeScatterDataset('동 거래', MOCK_DONG_RAW, '#00B85E'),
+    ]
+  },
+  plugins: [zoneBgPlugin],
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#0F1B35',
+        titleFont: { family: 'Pretendard', weight: '700' },
+        bodyFont: { family: 'Pretendard' },
+        callbacks: {
+          title: items => {
+            const xi = Math.round(items[0]?.parsed?.x ?? 0);
+            return monthLabels[xi] ?? '';
+          },
+          label: item => {
+            const y = item.parsed.y;
+            if (y == null) return null;
+            if (item.dataset.type === 'scatter')
+              return ` ${y.toLocaleString()}만원/평 (거래)`;
+            return ` ${item.dataset.label}: ${y.toLocaleString()}만원/평`;
+          }
+        }
+      }
+    },
+    scales: {
+      x: {
+        type: 'linear',
+        min: -0.5,
+        max: 35.5,
+        grid: { color: '#E4E8F2' },
+        ticks: {
+          font: { family: 'Pretendard', size: 11 },
+          maxRotation: 0,
+          autoSkip: false,
+          callback: function(val) {
+            const idx = Math.round(val);
+            if (Math.abs(val - idx) > 0.01) return '';
+            const label = monthLabels[idx];
+            if (label && label.endsWith('.01')) return label.split('.')[0] + '년';
+            return '';
+          }
+        }
+      },
+      y: {
+        grid: { color: '#E4E8F2' },
+        ticks: { font: { family: 'Pretendard', size: 12 }, callback: v => v?.toLocaleString() },
+        title: { display: true, text: '만원/평', font: { family: 'Pretendard', size: 11 }, color: '#9AA2B4' }
+      }
+    }
+  }
+});
+
+updateChartStats(MOCK_COMPLEX_MA);
+
+// ── Dong Panel ──
+function toggleDongPanel() {
+  document.getElementById('dongPanel').classList.toggle('open');
+}
+
+const activeDongs = new Set();
+
+async function toggleDong(el, dong) {
+  if (activeDongs.has(dong)) {
+    activeDongs.delete(dong);
+    delete dongAmenities[dong];
+    el.classList.remove('active');
+    removeDataset(dong);
+    addBotMessage(`${dong} 데이터를 차트에서 제거했어요.`, 'system');
+    return;
+  }
+
+  activeDongs.add(dong);
+  el.classList.add('active');
+
+  // 실API로 동 데이터 시도, 실패 시 mock fallback
+  if (REAL_LAWD_CD) {
+    try {
+      const pyeongParam = PAGE_PYEONG ? `&pyeong=${PAGE_PYEONG}` : '';
+      const res = await fetch(
+        `/api/dong-data?lawd_cd=${REAL_LAWD_CD}&dong_name=${encodeURIComponent(dong)}${pyeongParam}`,
+        { signal: AbortSignal.timeout(15000) }
+      );
+      if (res.ok) {
+        const d = await res.json();
+        const colorIdx = (activeDongs.size - 1) % DONG_COLORS.length;
+        const color = DATA[dong]?.color ?? DONG_COLORS[colorIdx];
+        // 36개 이상(월평균 1건+) → MA 선, 미만 → scatter 점
+        const useScatter = (d.total_count ?? 0) < 36;
+        DATA[dong] = { type: useScatter ? 'scatter' : 'line', ma: d.ma, raw: d.raw || [], color };
+      }
+    } catch { /* mock 사용 */ }
+
+    // 비교 동 입지 데이터 비동기 로드 (dong_name fallback 좌표 활용)
+    try {
+      const res2 = await fetch(
+        `/api/nearby-amenities?entX=&entY=&dong_name=${encodeURIComponent(dong)}`,
+        { signal: AbortSignal.timeout(10000) }
+      );
+      if (res2.ok) {
+        const amenData = await res2.json();
+        if (!amenData.error) dongAmenities[dong] = buildAmenitySummary(amenData);
+      }
+    } catch { /* 입지 없이 진행 */ }
+  }
+
+  if (!DATA[dong]) {
+    addBotMessage(`${dong} 데이터를 가져올 수 없어요.`, 'system');
+    activeDongs.delete(dong);
+    el.classList.remove('active');
+    return;
+  }
+
+  addDataset(dong);
+  addBotMessage(`${dong}을 차트에 추가했어요. 비교 분석을 도와드릴게요.`);
+}
+
+function addDataset(dong) {
+  const d = DATA[dong];
+  if (d.type === 'line') {
+    chart.data.datasets.push(makeMaDataset(dong, d.ma, d.color));
+  } else {
+    chart.data.datasets.push(makeScatterDataset(dong, d.raw, d.color));
+  }
+  chart.update();
+  updateLegend();
+}
+
+function removeDataset(dong) {
+  chart.data.datasets = chart.data.datasets.filter(d => d.label !== dong);
+  chart.update();
+  updateLegend();
+}
+
+function updateLegend() {
+  const legend = document.getElementById('chartLegend');
+  legend.innerHTML = chart.data.datasets.map(d => {
+    const rawBg = (d.backgroundColor ?? '').replace(/[0-9a-fA-F]{2}$/, '');
+    const color = (d.borderColor && d.borderColor !== 'transparent' ? d.borderColor : rawBg) || '#ccc';
+    const icon = d.type === 'scatter'
+      ? `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};opacity:0.8;margin-right:4px"></span>`
+      : `<span class="legend-dot" style="background:${color}"></span>`;
+    return `<span>${icon}${d.label}</span>`;
+  }).join('');
+}
+
+// ── Chat ──
+const chatMessages = document.getElementById('chatMessages');
+const chatInput = document.getElementById('chatInput');
+const sendBtn = document.getElementById('sendBtn');
+
+let conversationHistory = [];
+let isLoading = false;
+
+// Initial bot message
+addBotMessage(
+  `안녕하세요! <strong>${escapeHtml(PAGE_ADDRESS)}</strong> 시세 차트입니다.<br><br>` +
+  `도와드릴 수 있는 것:<br>` +
+  `&nbsp;· 가격 추이 · 변화율 설명<br>` +
+  `&nbsp;· 주변 동과 시세 비교<br>` +
+  `&nbsp;· 평단가 현황 해석<br><br>` +
+  `어려운 것:<br>` +
+  `&nbsp;· 가격 변동 <strong>이유</strong> (데이터만으로는 알 수 없어요)<br>` +
+  `&nbsp;· 미래 <strong>예측</strong> · 투자 <strong>권유</strong>`
+);
+
+// 실거래 API 데이터 로드 (백엔드 연결 시 차트 자동 업데이트)
+loadRealData();
+
+function addBotMessage(html, type = 'bot') {
+  const msg = document.createElement('div');
+  msg.className = `msg bot${type === 'system' ? ' system' : ''}`;
+  msg.innerHTML = `
+    <div class="msg-label">AI</div>
+    <div class="msg-bubble">${html}</div>
+  `;
+  chatMessages.appendChild(msg);
+  scrollToBottom();
+  return msg;
+}
+
+function addUserMessage(text) {
+  const msg = document.createElement('div');
+  msg.className = 'msg user';
+  msg.innerHTML = `
+    <div class="msg-label">나</div>
+    <div class="msg-bubble">${escapeHtml(text)}</div>
+  `;
+  chatMessages.appendChild(msg);
+  scrollToBottom();
+}
+
+function addTypingIndicator() {
+  const msg = document.createElement('div');
+  msg.className = 'msg bot typing-indicator';
+  msg.id = 'typingIndicator';
+  msg.innerHTML = `
+    <div class="msg-label">AI</div>
+    <div class="msg-bubble">
+      <div class="typing-dot"></div>
+      <div class="typing-dot"></div>
+      <div class="typing-dot"></div>
+    </div>
+  `;
+  chatMessages.appendChild(msg);
+  scrollToBottom();
+}
+
+function removeTypingIndicator() {
+  const el = document.getElementById('typingIndicator');
+  if (el) el.remove();
+}
+
+function scrollToBottom() {
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function getChartContext() {
+  const firstValid = v => v.find(x => x > 0) || 1;
+  const lastValid  = v => [...v].reverse().find(x => x > 0) || 0;
+  const cma = complexMaValues.map(v => v || 0);
+  const dma = dongMaValues.map(v => v || 0);
+  return {
+    address: PAGE_ADDRESS,
+    size_pyeong: PAGE_PYEONG || 30,
+    build_year: window.PAGE_BUILD_YEAR || null,
+    months: monthLabels,
+    complex: cma,
+    dong: dma,
+    active_dongs: [...activeDongs].map(d => ({ name: d, data: (DATA[d]?.ma ?? []).map(v => v || 0) })),
+    stats: {
+      complex_change_pct:  +((lastValid(cma) / firstValid(cma) - 1) * 100).toFixed(1),
+      dong_change_pct:     +((lastValid(dma) / firstValid(dma) - 1) * 100).toFixed(1),
+      complex_vs_dong_pct: +((lastValid(cma) / lastValid(dma) - 1) * 100).toFixed(1),
+      latest_complex: lastValid(cma),
+      latest_dong:    lastValid(dma),
+    }
+  };
+}
+
+async function loadRealData() {
+  try {
+    let apiUrl = `/api/market-data?address=${encodeURIComponent(PAGE_ADDRESS)}`;
+    if (PAGE_LAWD_CD)  apiUrl += `&lawd_cd=${PAGE_LAWD_CD}`;
+    if (PAGE_APT_NAME) apiUrl += `&apt_name=${encodeURIComponent(PAGE_APT_NAME)}`;
+    if (PAGE_DONG)     apiUrl += `&dong=${encodeURIComponent(PAGE_DONG)}`;
+    if (PAGE_PYEONG)   apiUrl += `&pyeong=${PAGE_PYEONG}`;
+    const res = await fetch(apiUrl, { signal: AbortSignal.timeout(15000) });
+    if (!res.ok) throw new Error('API error');
+    const d = await res.json();
+
+    REAL_LAWD_CD = d.lawd_cd;
+    REAL_APT_NAME = d.apt_name;
+    if (d.build_year) window.PAGE_BUILD_YEAR = d.build_year;
+
+    monthLabels = d.months;
+    complexMaValues = d.complex_ma || [];
+    dongMaValues    = d.dong_ma    || [];
+    renderDongChips(d.lawd_cd, d.dong_name, d.dong_counts || {});
+
+    // 차트 업데이트: [0] 단지 scatter, [1] 동 scatter
+    // 실데이터가 있을 때만 교체 — 없으면 mock 점 유지 (사라지는 UX 방지)
+    chart.data.datasets[0].label = d.apt_name;
+    if ((d.complex_raw || []).length > 0)
+      chart.data.datasets[0].data = applyJitter(d.complex_raw);
+    if ((d.dong_raw || []).length > 0)
+      chart.data.datasets[1].data = applyJitter(d.dong_raw);
+    chart.update();
+    updateLegend();
+    updateChartStats(complexMaValues);
+
+    if (d.stats) {
+      const s = d.stats;
+      const fmt = v => (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
+      document.getElementById('statComplex').textContent = fmt(s.complex_change_pct);
+      document.getElementById('statDong').textContent = fmt(s.dong_change_pct);
+      document.getElementById('statVsDong').textContent = fmt(s.complex_vs_dong_pct);
+    }
+
+    fetchAmenities(); // 완료 후 showAmenities → autoGreet 순서로 실행
+  } catch {
+    document.getElementById('statComplex').textContent = '+38%';
+    document.getElementById('statDong').textContent = '+34%';
+    document.getElementById('statVsDong').textContent = '+5.5%';
+    updateChartStats(MOCK_COMPLEX_MA);
+  }
+}
+
+async function fetchAmenities() {
+  if (!PAGE_LAT && !PAGE_LNG && !PAGE_ENT_X && !PAGE_ENT_Y && !PAGE_DONG) return;
+  try {
+    const dongParam = PAGE_DONG ? `&dong_name=${encodeURIComponent(PAGE_DONG)}` : '';
+    // DB 정확 좌표(lat/lng) 우선, 없으면 UTM-K(entX/entY) fallback
+    const url = PAGE_LAT && PAGE_LNG
+      ? `/api/nearby-amenities?lat=${PAGE_LAT}&lng=${PAGE_LNG}${dongParam}`
+      : `/api/nearby-amenities?entX=${PAGE_ENT_X ?? ''}&entY=${PAGE_ENT_Y ?? ''}${dongParam}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    if (!res.ok) return;
+    const d = await res.json();
+    if (d.error === 'no_coords') return;
+    showAmenities(d);
+  } catch {}
+}
+
+function buildAmenitySummary(d) {
+  const storeParts = [];
+  if (d.emart_2km     > 0) storeParts.push(`이마트 ${d.emart_2km}개(2km)`);
+  if (d.dept_store_3km > 0) storeParts.push(`백화점 ${d.dept_store_3km}개(3km)`);
+  const positives = `지하철역(도보 10분) ${d.subway_10min}개, 초등학교 ${d.school_1km}개, 중고등학교 ${d.secondary_school_1km}개, 병원 ${d.hospital_2km}개(2km), 공원 ${d.park_1km}개, 고속도로IC ${d.highway_ic_3km}개(3km)` + (storeParts.length ? `, ${storeParts.join(', ')}` : '');
+  const negParts = [];
+  if (d.crematorium_3km  > 0) negParts.push(`화장장 ${d.crematorium_3km}개(3km 내)`);
+  if (d.waste_plant_2km  > 0) negParts.push(`쓰레기처리장 ${d.waste_plant_2km}개(2km 내)`);
+  if (d.highvoltage_500m > 0) negParts.push(`고압선·변전소 ${d.highvoltage_500m}개(500m 내)`);
+  if (d.industrial_1km   > 0) negParts.push(`공장지역 ${d.industrial_1km}개(1km 내)`);
+  if (d.prison_1km       > 0) negParts.push(`교도소·구치소 ${d.prison_1km}개(1km 내)`);
+  if (d.military_1km     > 0) negParts.push(`군부대 ${d.military_1km}개(1km 내)`);
+  return positives + (negParts.length ? `\n혐오시설: ${negParts.join(', ')}` : '');
+}
+
+function showAmenities(d) {
+  const strip = document.getElementById('amenityStrip');
+  if (!strip) return;
+  const badChips = [];
+  if (d.crematorium_3km  > 0) badChips.push(`<span class="amenity-chip bad">⚠️ 화장장 <strong>${d.crematorium_3km}</strong>개</span>`);
+  if (d.waste_plant_2km  > 0) badChips.push(`<span class="amenity-chip bad">⚠️ 쓰레기처리장 <strong>${d.waste_plant_2km}</strong>개</span>`);
+  if (d.highvoltage_500m > 0) badChips.push(`<span class="amenity-chip bad">⚠️ 고압선 <strong>${d.highvoltage_500m}</strong>개</span>`);
+  if (d.industrial_1km   > 0) badChips.push(`<span class="amenity-chip bad">⚠️ 공장 <strong>${d.industrial_1km}</strong>개</span>`);
+  if (d.prison_1km       > 0) badChips.push(`<span class="amenity-chip bad">⚠️ 교도소·구치소 <strong>${d.prison_1km}</strong>개</span>`);
+  if (d.military_1km     > 0) badChips.push(`<span class="amenity-chip bad">⚠️ 군부대 <strong>${d.military_1km}</strong>개</span>`);
+
+  strip.innerHTML = `
+    <span class="amenity-label">입지</span>
+    <span class="amenity-chip">🚇 도보 10분 <strong>${d.subway_10min}</strong>개</span>
+    <span class="amenity-chip">🏫 초등 <strong>${d.school_1km}</strong> / 중고 <strong>${d.secondary_school_1km}</strong>개</span>
+    <span class="amenity-chip">🏥 병원 <strong>${d.hospital_2km}</strong>개</span>
+    <span class="amenity-chip">🌳 공원 <strong>${d.park_1km}</strong>개</span>
+    <span class="amenity-chip">🚗 고속도로IC <strong>${d.highway_ic_3km}</strong>개</span>
+    ${d.emart_2km   > 0 ? `<span class="amenity-chip">🛒 이마트 <strong>${d.emart_2km}</strong>개</span>` : ''}
+    ${d.dept_store_3km > 0 ? `<span class="amenity-chip">🛍️ 백화점 <strong>${d.dept_store_3km}</strong>개</span>` : ''}
+    ${badChips.join('')}
+  `;
+  strip.style.display = 'flex';
+  amenitySummary = buildAmenitySummary(d);
+
+  // 모든 데이터 로드 완료 → AI가 먼저 인사
+  autoGreet();
+}
+
+async function autoGreet() {
+  if (isLoading) return;
+  isLoading = true;
+  sendBtn.disabled = true;
+
+  addTypingIndicator();
+
+  const context = getChartContext();
+  const greetPrompt = '안녕하세요! 차트와 입지 데이터를 바탕으로 이 단지를 쉽게 설명해 주세요. 전문 용어 없이 2~3문장으로, 가장 눈에 띄는 점 한 가지를 먼저 말해주세요.';
+
+  let replyText = null;   // LLM plain-text reply (needs escapeHtml before innerHTML)
+  let replyHtml = null;   // Fallback hardcoded HTML (already safe, no escaping needed)
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: greetPrompt, context, history: [], amenity_summary: amenitySummary, dong_amenities: dongAmenities }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) throw new Error();
+    replyText = (await res.json()).reply;
+  } catch {
+    // 서버 없을 때 — 차트 데이터 기반 간단 인사 (hardcoded HTML — no user input)
+    const apt = PAGE_ADDRESS || '이 단지';
+    const py  = PAGE_PYEONG ? `${PAGE_PYEONG}평` : '';
+    const validMa = complexMaValues.filter(v => v != null && v > 0);
+    const latest = validMa.length ? Math.round(validMa[validMa.length - 1]).toLocaleString() : null;
+    replyHtml = `안녕하세요! ${escapeHtml(apt)}${py ? ' ' + py : ''} 시세 차트를 불러왔어요.`
+          + (latest ? ` 최근 평단가는 약 <strong>${latest}만원</strong>입니다.` : '')
+          + ' 궁금한 점이 있으시면 아래에 질문해 주세요!';
+  }
+
+  removeTypingIndicator();
+  // LLM output: escape before rendering as HTML; fallback HTML: already safe
+  addBotMessage(replyText !== null ? escapeHtml(replyText) : replyHtml);
+  conversationHistory.push({ role: 'assistant', content: replyText ?? replyHtml ?? '' });
+
+  isLoading = false;
+  sendBtn.disabled = false;
+}
+
+// Mock responses for offline / fallback — dynamic, uses actual page variables
+function getMockResponse() {
+  const apt  = PAGE_ADDRESS || '단지';
+  const dong = PAGE_DONG    || '';
+  const py   = PAGE_PYEONG  ? `${PAGE_PYEONG}평` : '';
+  const label = [apt, py].filter(Boolean).join(' ');
+  const validMa = complexMaValues.filter(v => v != null && v > 0);
+  const latestPrice = validMa.length ? Math.round(validMa[validMa.length - 1]).toLocaleString() : null;
+  const priceNote = latestPrice ? ` (최근 평단가 약 ${latestPrice}만원)` : '';
+  const responses = [
+    `현재 AI 챗봇 서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해 주세요.\n\n차트에서 ${label}${priceNote}의 시세 흐름을 직접 확인할 수 있습니다.`,
+    `챗봇 응답을 받을 수 없는 상태입니다. 잠시 후 다시 시도하거나, 서버 상태를 확인해 주세요.\n\n${dong ? dong + ' ' : ''}시세 데이터는 차트에 표시되어 있습니다.`,
+    `서버 연결이 원활하지 않습니다. ${label} 관련 질문은 서버 재시작 후 다시 이용해 주세요.`,
+  ];
+  return responses[mockIdx++ % responses.length];
+}
+let mockIdx = 0;
+
+async function callChatAPI(userMsg, context) {
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: userMsg, context, history: conversationHistory, amenity_summary: amenitySummary, dong_amenities: dongAmenities }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) throw new Error('API error');
+    const data = await res.json();
+    return data.reply;
+  } catch {
+    // Offline fallback
+    return getMockResponse();
+  }
+}
+
+async function sendMessage() {
+  const text = chatInput.value.trim();
+  if (!text || isLoading) return;
+
+  isLoading = true;
+  sendBtn.disabled = true;
+  chatInput.value = '';
+
+  // Hide quick questions after first real message
+  document.getElementById('quickQuestions').style.display = 'none';
+
+  addUserMessage(text);
+  conversationHistory.push({ role: 'user', content: text });
+
+  addTypingIndicator();
+
+  const context = getChartContext();
+  const reply = await callChatAPI(text, context);
+
+  removeTypingIndicator();
+  addBotMessage(escapeHtml(reply));
+  conversationHistory.push({ role: 'assistant', content: reply });
+
+  isLoading = false;
+  sendBtn.disabled = false;
+  chatInput.focus();
+}
+
+function askQuick(q) {
+  chatInput.value = q;
+  sendMessage();
+}
+
+async function savePDF() {
+  if (conversationHistory.length === 0) {
+    alert('저장할 대화 내용이 없어요. 먼저 질문해 보세요!');
+    return;
+  }
+
+  const pdfBtn = document.getElementById('pdfBtn');
+  pdfBtn.textContent = '요약 중...';
+  pdfBtn.disabled = true;
+
+  let summaryText = '';
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: '지금까지의 대화를 3~5문장으로 요약해줘. 핵심 수치와 결론 위주로.',
+        context: getChartContext(),
+        history: conversationHistory,
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (res.ok) summaryText = (await res.json()).reply;
+  } catch {}
+
+  const now = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
+
+  const historyHtml = conversationHistory.map(m => `
+    <div class="msg-item ${m.role}">
+      <span class="role">${m.role === 'user' ? '나' : 'AI'}</span>
+      <p>${m.content.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</p>
+    </div>
+  `).join('');
+
+  document.getElementById('printArea').innerHTML = `
+    <h1>VerifyHome 시세 분석 리포트</h1>
+    <p class="print-meta">${escapeHtml(PAGE_ADDRESS)} &nbsp;·&nbsp; ${escapeHtml(now)}</p>
+    ${summaryText ? `<h2>대화 요약</h2><div class="summary-box"><p>${escapeHtml(summaryText)}</p></div>` : ''}
+    <h2>대화 내용</h2>
+    ${historyHtml}
+    <p class="print-footer">본 리포트는 국토교통부 실거래가 공개시스템 기반 VerifyHome이 생성했습니다.</p>
+  `;
+
+  pdfBtn.textContent = '저장';
+  pdfBtn.disabled = false;
+  window.print();
+}
+</script>
+</body>
+</html>
