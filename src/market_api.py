@@ -539,6 +539,16 @@ async def apt_match(bd_nm: str, sgg_cd: str, dong: str | None = None) -> dict:
     return await loop.run_in_executor(None, _query)
 
 
+@app.get("/api/prefetch")
+async def prefetch_market(lawd_cd: str) -> dict:
+    """아파트 선택 시 36개월 캐시 워밍 — 즉시 리턴, fetch는 백그라운드 실행."""
+    months_ym = get_last_n_months(36)
+    asyncio.create_task(
+        asyncio.gather(*[fetch_month_items(lawd_cd, ym) for ym in months_ym])
+    )
+    return {"status": "ok"}
+
+
 @app.get("/api/apt-sizes")
 async def apt_sizes(lawd_cd: str, apt_name: str, dong: str | None = None) -> dict:
     """해당 아파트에서 실제 거래된 평수 목록 반환 (최근 3개월)"""

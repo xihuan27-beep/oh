@@ -334,6 +334,7 @@
     aptMatch = null;
     input.value = selectedJuso.bdNm;
     hideDropdown();
+    fetch(`/api/prefetch?lawd_cd=${selectedJuso.admCd.slice(0, 5)}`).catch(() => {}); // 캐시 워밍
     const sggCd = selectedJuso.admCd.slice(0, 5);
     const dong = extractDong(selectedJuso.jibunAddr);
     // apt-match와 apt-sizes를 병렬 호출
