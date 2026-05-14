@@ -116,6 +116,63 @@
   .search-btn:active { transform: translateY(-50%) scale(0.94); }
   .search-btn svg { fill: #fff; width: 18px; height: 18px; }
 
+  /* ── Autocomplete Dropdown ── */
+  .dropdown {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0; right: 0;
+    background: #fff;
+    border: 1.5px solid var(--border);
+    border-radius: 16px;
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+    z-index: 100;
+  }
+  .dropdown-item {
+    padding: 12px 20px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.12s;
+  }
+  .dropdown-item:last-child { border-bottom: none; }
+  .dropdown-item:hover { background: var(--blue-light); }
+  .dropdown-bdnm {
+    font-size: 14px; font-weight: 700; color: var(--navy);
+    margin-bottom: 2px;
+  }
+  .dropdown-addr {
+    font-size: 12px; color: var(--text-muted);
+  }
+
+  /* ── Size Chips ── */
+  .size-panel {
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+  }
+  .size-label {
+    font-size: 13px; color: var(--text-secondary); font-weight: 600;
+  }
+  .size-chips {
+    display: flex; flex-wrap: wrap; gap: 8px;
+  }
+  .size-chip {
+    padding: 7px 18px;
+    border-radius: 30px;
+    border: 1.5px solid var(--border);
+    font-size: 14px; font-weight: 500;
+    cursor: pointer; color: var(--text-secondary);
+    background: #fff;
+    transition: all 0.15s;
+  }
+  .size-chip:hover { border-color: var(--blue); color: var(--blue); }
+  .size-chip.active {
+    background: var(--blue); border-color: var(--blue);
+    color: #fff; font-weight: 600;
+  }
+
   /* ── Hint ── */
   .hint {
     font-size: 13px;
@@ -151,15 +208,22 @@
     <input
       class="search-input"
       type="text"
-      placeholder="예: 서울시 마포구 상암동 월드컵파크 1단지"
+      placeholder="예: 역삼래미안, 마포구 상암동"
       id="addressInput"
       autocomplete="off"
     />
+    <div class="dropdown" id="dropdown"></div>
     <button class="search-btn" onclick="goVerify()" aria-label="검증 시작">
       <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
         <path d="M10 2a8 8 0 105.293 14.121l4.293 4.293 1.414-1.414-4.293-4.293A8 8 0 0010 2zm0 2a6 6 0 110 12A6 6 0 0110 4z"/>
       </svg>
     </button>
+  </div>
+
+  <!-- Size Chips -->
+  <div class="size-panel" id="sizePanel">
+    <div class="size-label">몇 평형을 보시겠어요?</div>
+    <div class="size-chips" id="sizeChips"></div>
   </div>
 
   <!-- Hint -->
@@ -170,17 +234,110 @@
 <footer>© 2026 VerifyHome · 데이터 기반 부동산 검증 서비스</footer>
 
 <script>
-  document.getElementById('addressInput').addEventListener('keydown', function(e) {
+  let debounceTimer = null;
+  let selectedJuso = null;
+  let selectedSize = null;
+
+  const input = document.getElementById('addressInput');
+  const dropdown = document.getElementById('dropdown');
+
+  input.addEventListener('keydown', e => {
     if (e.key === 'Enter') goVerify();
+    if (e.key === 'Escape') hideDropdown();
   });
 
+  input.addEventListener('input', () => {
+    selectedJuso = null;
+    selectedSize = null;
+    document.getElementById('sizePanel').style.display = 'none';
+    const keyword = input.value.trim();
+    clearTimeout(debounceTimer);
+    if (keyword.length < 2) { hideDropdown(); return; }
+    debounceTimer = setTimeout(() => fetchSuggestions(keyword), 300);
+  });
+
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.search-wrap')) hideDropdown();
+  });
+
+  async function fetchSuggestions(keyword) {
+    try {
+      const res = await fetch(
+        `http://localhost:8000/api/address-search?keyword=${encodeURIComponent(keyword)}`,
+        { signal: AbortSignal.timeout(5000) }
+      );
+      if (!res.ok) return;
+      showDropdown((await res.json()).results || []);
+    } catch { hideDropdown(); }
+  }
+
+  function showDropdown(results) {
+    if (!results.length) { hideDropdown(); return; }
+    dropdown.dataset.results = JSON.stringify(results);
+    dropdown.innerHTML = results.map((r, i) => `
+      <div class="dropdown-item" onclick="selectAddress(${i})">
+        <div class="dropdown-bdnm">${r.bdNm}</div>
+        <div class="dropdown-addr">${r.roadAddr}</div>
+      </div>
+    `).join('');
+    dropdown.style.display = 'block';
+  }
+
+  function hideDropdown() { dropdown.style.display = 'none'; }
+
+  async function selectAddress(idx) {
+    const results = JSON.parse(dropdown.dataset.results);
+    selectedJuso = results[idx];
+    input.value = selectedJuso.bdNm;
+    hideDropdown();
+    await fetchAptSizes(selectedJuso.admCd.slice(0, 5), selectedJuso.bdNm);
+  }
+
+  async function fetchAptSizes(lawd_cd, apt_name) {
+    try {
+      const res = await fetch(
+        `http://localhost:8000/api/apt-sizes?lawd_cd=${lawd_cd}&apt_name=${encodeURIComponent(apt_name)}`,
+        { signal: AbortSignal.timeout(10000) }
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      showSizeChips(data.sizes || []);
+    } catch {}
+  }
+
+  function showSizeChips(sizes) {
+    if (!sizes.length) return;
+    const panel = document.getElementById('sizePanel');
+    document.getElementById('sizeChips').innerHTML = sizes
+      .map(s => `<div class="size-chip" onclick="selectSize(this, ${s})">${s}평</div>`)
+      .join('');
+    panel.style.display = 'flex';
+  }
+
+  function selectSize(el, pyeong) {
+    selectedSize = pyeong;
+    document.querySelectorAll('.size-chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+  }
+
+  function extractDong(jibunAddr) {
+    const m = jibunAddr.match(/\s(\S+동)\s/);
+    return m ? m[1] : null;
+  }
+
   function goVerify() {
-    const addr = document.getElementById('addressInput').value.trim();
-    if (!addr) {
-      document.getElementById('addressInput').focus();
-      return;
+    const addr = input.value.trim();
+    if (!addr) { input.focus(); return; }
+
+    let url = 'market-web.html?address=' + encodeURIComponent(addr);
+    if (selectedJuso) {
+      url += '&lawd_cd=' + selectedJuso.admCd.slice(0, 5);
+      url += '&apt_name=' + encodeURIComponent(selectedJuso.bdNm);
+      const dong = extractDong(selectedJuso.jibunAddr);
+      if (dong) url += '&dong=' + encodeURIComponent(dong);
     }
-    window.location.href = 'market-web.html?address=' + encodeURIComponent(addr);
+    if (selectedSize) url += '&pyeong=' + selectedSize;
+    window.location.href = url;
   }
 </script>
 

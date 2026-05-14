@@ -31,6 +31,8 @@ client = anthropic.AsyncAnthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
 APT_TRADE_URL = "https://apis.data.go.kr/1613000/RTMSDataSvcAptTradeDev/getRTMSDataSvcAptTradeDev"
 DATA_GO_KR_API_KEY = os.environ.get("DATA_GO_KR_API_KEY")
+JUSO_CONFIRM_KEY = os.environ.get("JUSO_CONFIRM_KEY")
+JUSO_URL = "https://business.juso.go.kr/addrlink/addrLinkApi.do"
 
 # 서울 25개 구 LAWD_CD
 LAWD_CD_MAP: dict[str, str] = {
@@ -214,17 +216,60 @@ def change_pct(data: list[float]) -> float:
 
 
 def month_label(yyyymm: str) -> str:
-    dt = datetime.strptime(yyyymm, "%Y%m")
-    return dt.strftime("%m월").lstrip("0")
+    return f"{yyyymm[:4]}.{yyyymm[4:]}"  # "202501" → "2025.01"
 
 
 # ── 실거래 엔드포인트 ──
 
+@app.get("/api/address-search")
+async def address_search(keyword: str) -> dict:
+    """주소 자동완성 — 프론트 검색창 debounce 호출용"""
+    if not JUSO_CONFIRM_KEY or not keyword.strip():
+        return {"results": []}
+
+    async with httpx.AsyncClient(timeout=10) as hclient:
+        res = await hclient.get(JUSO_URL, params={
+            "confmKey": JUSO_CONFIRM_KEY,
+            "currentPage": "1",
+            "countPerPage": "10",
+            "keyword": keyword,
+            "resultType": "json",
+        })
+
+    try:
+        jusos = res.json().get("results", {}).get("juso", []) or []
+    except Exception:
+        return {"results": []}
+
+    return {
+        "results": [
+            {
+                "roadAddr": j.get("roadAddr", ""),
+                "jibunAddr": j.get("jibunAddr", ""),
+                "bdNm": j.get("bdNm", ""),
+                "admCd": j.get("admCd", ""),
+            }
+            for j in jusos
+            if j.get("bdNm")  # 건물명 있는 것(아파트)만
+        ]
+    }
+
+
 @app.get("/api/market-data")
-async def market_data(address: str) -> dict:
+async def market_data(
+    address: str,
+    lawd_cd: str | None = None,
+    apt_name: str | None = None,
+    dong: str | None = None,
+    pyeong: int | None = None,
+) -> dict:
     """주소 → 단지 + 동 평균 월별 평단가 (최근 6개월)"""
-    lawd_cd, apt_name, dong_name = parse_address(address)
-    months_ym = get_last_n_months(6)
+    # juso API에서 직접 받은 값이 있으면 파싱 건너뜀
+    if lawd_cd and apt_name:
+        dong_name = dong
+    else:
+        lawd_cd, apt_name, dong_name = parse_address(address)
+    months_ym = get_last_n_months(36)
 
     all_items = await asyncio.gather(*[
         fetch_month_items(lawd_cd, ym) for ym in months_ym
@@ -232,24 +277,35 @@ async def market_data(address: str) -> dict:
 
     complex_prices: list[float | None] = []
     dong_prices: list[float | None] = []
+    volume_counts: list[int] = []
     months_display: list[str] = []
 
     for ym, month_items in zip(months_ym, all_items):
         months_display.append(month_label(ym))
 
+        # 평수 필터 범위 결정
+        min_p = (pyeong - 2) if pyeong else 18
+        max_p = (pyeong + 2) if pyeong else 26
+
         # 단지 데이터: aptNm 포함 + 면적 필터
         apt_items = filter_area([
             i for i in month_items if apt_name and apt_name in i["apt_nm"]
-        ])
+        ], min_p, max_p)
 
         # 동 평균: 동명 필터(있으면) + 면적 필터
         dong_items = month_items
         if dong_name:
             dong_items = [i for i in dong_items if i["umd_nm"] == dong_name]
-        dong_items = filter_area(dong_items)
+        dong_items = filter_area(dong_items, min_p, max_p)
 
         complex_prices.append(avg_ppp(apt_items))
         dong_prices.append(avg_ppp(dong_items))
+        # 거래량: 동 전체(면적 무관) 또는 단지 건수
+        if dong_name:
+            vol = len([i for i in month_items if i["umd_nm"] == dong_name])
+        else:
+            vol = len(apt_items)
+        volume_counts.append(vol)
 
     complex_filled = forward_fill(complex_prices)
     dong_filled = forward_fill(dong_prices)
@@ -265,6 +321,7 @@ async def market_data(address: str) -> dict:
         "months": months_display,
         "complex": complex_filled,
         "dong_avg": dong_filled,
+        "volume": volume_counts,
         "stats": {
             "complex_change_pct": change_pct(complex_filled),
             "dong_change_pct": change_pct(dong_filled),
@@ -275,10 +332,25 @@ async def market_data(address: str) -> dict:
     }
 
 
+@app.get("/api/apt-sizes")
+async def apt_sizes(lawd_cd: str, apt_name: str) -> dict:
+    """해당 아파트에서 실제 거래된 평수 목록 반환 (최근 3개월)"""
+    months_ym = get_last_n_months(3)
+    all_items = await asyncio.gather(*[
+        fetch_month_items(lawd_cd, ym) for ym in months_ym
+    ])
+    sizes: set[int] = set()
+    for month_items in all_items:
+        for item in month_items:
+            if apt_name in item["apt_nm"]:
+                sizes.add(round(item["pyeong"]))
+    return {"sizes": sorted(sizes)}
+
+
 @app.get("/api/dong-data")
 async def dong_data(lawd_cd: str, dong_name: str) -> dict:
     """특정 동의 월별 평균 평단가 (최근 6개월)"""
-    months_ym = get_last_n_months(6)
+    months_ym = get_last_n_months(36)
 
     all_items = await asyncio.gather(*[
         fetch_month_items(lawd_cd, ym) for ym in months_ym
@@ -346,7 +418,8 @@ SYSTEM_PROMPT_TEMPLATE = """\
 4. **투자 권유 금지**: "사세요/파세요" 금지. "데이터상으로는 ~로 보입니다" 수준까지만.
 5. **비교 동이 추가된 경우**: 추가된 동 데이터를 적극 활용해 비교 분석합니다.
 6. **추세 예측 금지**: 과거·현재 데이터만 서술, 미래 전망은 하지 않습니다.
-7. **한국어**로 답합니다.
+7. **이유·원인 질문** ("왜", "이유가", "원인이" 포함 시): "이유는 데이터만으로는 알 수 없지만, 추이를 말씀드리면 ~" 형식으로 자연스럽게 피봇합니다.
+8. **한국어**로 답합니다.
 """
 
 
