@@ -11,6 +11,7 @@ import math
 import os
 import re
 import sqlite3
+import time
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
@@ -67,6 +68,30 @@ _HIGHWAY_IC_JSON       = os.path.join(_SRC, "highway_ics.json")
 _DISAMENITY_JSON       = os.path.join(_SRC, "disamenities.json")
 _LARGE_STORE_JSON      = os.path.join(_SRC, "large_stores.json")
 _subway_coords_cache: list[tuple[float, float]] | None = None
+
+# ── Persistent HTTP client (TLS 핸드셰이크 재사용) ──────────────────────────
+_http_client: httpx.AsyncClient | None = None
+
+@app.on_event("startup")
+async def _startup() -> None:
+    global _http_client
+    _http_client = httpx.AsyncClient(timeout=15, limits=httpx.Limits(max_connections=40))
+
+@app.on_event("shutdown")
+async def _shutdown() -> None:
+    if _http_client:
+        await _http_client.aclose()
+
+# ── 월별 실거래 데이터 in-memory cache ─────────────────────────────────────
+# key: (lawd_cd, deal_ymd)  value: (cached_at: float, items: list[dict])
+_month_cache: dict[tuple[str, str], tuple[float, list[dict]]] = {}
+_CACHE_TTL_CURRENT = 3600   # 당월 데이터: 1시간
+_CACHE_SEMAPHORE: asyncio.Semaphore | None = None
+
+@app.on_event("startup")
+async def _init_semaphore() -> None:
+    global _CACHE_SEMAPHORE
+    _CACHE_SEMAPHORE = asyncio.Semaphore(20)  # 동시 MOLIT API 요청 최대 20개
 
 # 서울 25개 구 LAWD_CD
 LAWD_CD_MAP: dict[str, str] = {
@@ -166,10 +191,22 @@ def parse_address(address: str) -> tuple[str, str, str | None]:
 
 async def fetch_month_items(lawd_cd: str, deal_ymd: str) -> list[dict]:
     """단일 월 실거래 데이터 fetch → 정제된 항목 리스트 반환.
-    네트워크 오류 / API 응답 이상 시 빈 리스트 반환 (호출자 asyncio.gather가 실패하지 않도록).
+    - 과거 월: 영구 캐시 (데이터 불변)
+    - 당월: 1시간 TTL 캐시
+    - 네트워크 오류 / API 응답 이상 시 빈 리스트 반환
     """
     if not DATA_GO_KR_API_KEY:
         return []
+
+    # ── 캐시 확인 ──────────────────────────────────────────────────────────
+    cache_key = (lawd_cd, deal_ymd)
+    current_ym = datetime.now().strftime("%Y%m")
+    now = time.monotonic()
+    if cache_key in _month_cache:
+        cached_at, cached_items = _month_cache[cache_key]
+        is_current_month = (deal_ymd == current_ym)
+        if not is_current_month or (now - cached_at < _CACHE_TTL_CURRENT):
+            return cached_items
 
     params = {
         "serviceKey": DATA_GO_KR_API_KEY,
@@ -178,9 +215,12 @@ async def fetch_month_items(lawd_cd: str, deal_ymd: str) -> list[dict]:
         "numOfRows": "1000",
         "pageNo": "1",
     }
+    sem = _CACHE_SEMAPHORE or asyncio.Semaphore(20)
     try:
-        async with httpx.AsyncClient(timeout=15) as hclient:
-            res = await hclient.get(APT_TRADE_URL, params=params)
+        async with sem:
+            res = await (_http_client or httpx.AsyncClient(timeout=15)).get(
+                APT_TRADE_URL, params=params
+            )
     except Exception:
         return []  # 타임아웃 / 네트워크 오류 — 해당 월은 빈 결과로 처리
 
@@ -218,6 +258,7 @@ async def fetch_month_items(lawd_cd: str, deal_ymd: str) -> list[dict]:
             "build_year": build_year,
         })
 
+    _month_cache[cache_key] = (now, result)
     return result
 
 
