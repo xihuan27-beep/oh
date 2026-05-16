@@ -1124,7 +1124,7 @@ async function loadRealData() {
       document.getElementById('statVsDong').textContent = fmt(s.complex_vs_dong_pct);
     }
 
-    fetchAmenities(); // 완료 후 showAmenities → autoGreet 순서로 실행
+    fetchAmenities(); // 완료 후 finally 블록에서 autoGreet 항상 실행
   } catch {
     document.getElementById('statComplex').textContent = '+38%';
     document.getElementById('statDong').textContent = '+34%';
@@ -1134,8 +1134,9 @@ async function loadRealData() {
 }
 
 async function fetchAmenities() {
-  if (!PAGE_LAT && !PAGE_LNG && !PAGE_ENT_X && !PAGE_ENT_Y && !PAGE_DONG) return;
+  // 좌표 없어도, 어메니티 API 실패해도 항상 autoGreet() 호출
   try {
+    if (!PAGE_LAT && !PAGE_LNG && !PAGE_ENT_X && !PAGE_ENT_Y && !PAGE_DONG) return;
     const dongParam = PAGE_DONG ? `&dong_name=${encodeURIComponent(PAGE_DONG)}` : '';
     // DB 정확 좌표(lat/lng) 우선, 없으면 UTM-K(entX/entY) fallback
     const url = PAGE_LAT && PAGE_LNG
@@ -1145,8 +1146,10 @@ async function fetchAmenities() {
     if (!res.ok) return;
     const d = await res.json();
     if (d.error === 'no_coords') return;
-    showAmenities(d);
-  } catch {}
+    showAmenities(d); // showAmenities 내부에서 autoGreet 호출 안 함
+  } finally {
+    autoGreet(); // 성공·실패·좌표없음 모두 항상 실행
+  }
 }
 
 function buildAmenitySummary(d) {
@@ -1188,9 +1191,6 @@ function showAmenities(d) {
   `;
   strip.style.display = 'flex';
   amenitySummary = buildAmenitySummary(d);
-
-  // 모든 데이터 로드 완료 → AI가 먼저 인사
-  autoGreet();
 }
 
 async function autoGreet() {
