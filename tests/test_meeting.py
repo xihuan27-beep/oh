@@ -46,7 +46,8 @@ def mock_client():
 
 
 @pytest.fixture
-def meeting_no_api(mock_client):
+def meeting_no_api(mock_client, monkeypatch):
+    monkeypatch.delenv("LLM_MODEL", raising=False)
     with patch("meeting.AsyncAnthropic", return_value=mock_client):
         m = Meeting("강남 오피스텔 투자 검토")
     return m
