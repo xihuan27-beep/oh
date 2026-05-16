@@ -99,6 +99,7 @@
     outline: none;
     box-shadow: var(--shadow-md);
     transition: border-color 0.18s, box-shadow 0.18s;
+    cursor: pointer;
   }
   .search-input::placeholder { color: var(--text-muted); }
   .search-input:focus {
@@ -224,11 +225,11 @@
     <input
       class="search-input"
       type="text"
-      placeholder="예: 논현동 신동아아파트 101동"
+      placeholder="아파트 주소 검색 (클릭)"
       id="addressInput"
       autocomplete="off"
+      readonly
     />
-    <div class="dropdown" id="dropdown"></div>
     <button class="search-btn" onclick="goVerify()" aria-label="검증 시작">
       <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
         <path d="M10 2a8 8 0 105.293 14.121l4.293 4.293 1.414-1.414-4.293-4.293A8 8 0 0010 2zm0 2a6 6 0 110 12A6 6 0 0110 4z"/>
@@ -243,112 +244,61 @@
   </div>
 
   <!-- Hint -->
-  <p class="hint">단지명 또는 동 주소를 입력하면 평형을 선택할 수 있어요</p>
+  <p class="hint">입력창을 클릭하면 주소 검색 팝업이 열려요</p>
 
 </main>
 
 <footer>© 2026 VerifyHome · 데이터 기반 부동산 검증 서비스</footer>
 
 <script>
-  let debounceTimer = null;
-  let selectedJuso = null;
-  let aptMatch = null;   // apartment.db 매칭 결과 { lat, lng, apt_nm, umd_nm, apt_seq }
+  // ── 상태 ──────────────────────────────────────────────────────────
+  let selectedAddr = null;  // Daum 콜백 결과 + { aptName, lawdCd, dong }
+  let aptMatch     = null;  // /api/apt-match 결과 { lat, lng }
   let selectedSize = null;
-  let focusedIdx = -1;
 
   const input = document.getElementById('addressInput');
-  const dropdown = document.getElementById('dropdown');
 
-  input.addEventListener('keydown', e => {
-    const items = dropdown.querySelectorAll('.dropdown-item');
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      focusedIdx = Math.min(focusedIdx + 1, items.length - 1);
-      updateFocus(items);
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      focusedIdx = Math.max(focusedIdx - 1, 0);
-      updateFocus(items);
-    } else if (e.key === 'Enter') {
-      if (focusedIdx >= 0 && items[focusedIdx]) {
-        items[focusedIdx].click();
-      } else {
-        goVerify();
+  // 인풋 클릭 → Daum 팝업
+  input.addEventListener('click', openDaumPostcode);
+
+  // ── Daum 팝업 ────────────────────────────────────────────────────
+  function openDaumPostcode() {
+    new daum.Postcode({
+      oncomplete: function(data) {
+        // data.buildingName  : 아파트명 (예: "역삼래미안")
+        // data.sigunguCode   : 시군구코드 5자리 = lawd_cd (예: "11680")
+        // data.bname         : 법정동 (예: "역삼동")
+        // data.x / data.y    : 경도/위도 WGS84 (apt-match fallback용)
+        const aptName = data.buildingName || data.roadAddress;
+        const lawdCd  = data.sigunguCode;
+        const dong    = data.bname;
+
+        // 상태 초기화
+        selectedAddr = { ...data, aptName, lawdCd, dong };
+        selectedSize = null;
+        aptMatch     = null;
+
+        // UI 업데이트
+        input.value = aptName;
+        document.getElementById('sizePanel').style.display = 'none';
+
+        // 캐시 워밍 + 평형 목록 + 좌표 — 동시 실행
+        if (lawdCd) {
+          fetch(`/api/prefetch?lawd_cd=${lawdCd}`).catch(() => {});
+        }
+        Promise.allSettled([
+          fetchAptSizes(lawdCd, aptName, dong),
+          fetchAptMatch(aptName, lawdCd, dong),
+        ]).then(([, matchResult]) => {
+          if (matchResult.status === 'fulfilled' && matchResult.value?.lat) {
+            aptMatch = matchResult.value;
+          }
+        });
       }
-    } else if (e.key === 'Escape') {
-      hideDropdown();
-    }
-  });
-
-  function updateFocus(items) {
-    items.forEach((el, i) => {
-      el.classList.toggle('focused', i === focusedIdx);
-      if (i === focusedIdx) el.scrollIntoView({ block: 'nearest' });
-    });
+    }).open();
   }
 
-  input.addEventListener('input', () => {
-    selectedJuso = null;
-    selectedSize = null;
-    aptMatch = null;
-    document.getElementById('sizePanel').style.display = 'none';
-    const keyword = input.value.trim();
-    clearTimeout(debounceTimer);
-    if (keyword.length < 2) { hideDropdown(); return; }
-    debounceTimer = setTimeout(() => fetchSuggestions(keyword), 300);
-  });
-
-  document.addEventListener('click', e => {
-    if (!e.target.closest('.search-wrap')) hideDropdown();
-  });
-
-  async function fetchSuggestions(keyword) {
-    try {
-      const res = await fetch(
-        `/api/address-search?keyword=${encodeURIComponent(keyword)}`,
-        { signal: AbortSignal.timeout(5000) }
-      );
-      if (!res.ok) return;
-      showDropdown((await res.json()).results || []);
-    } catch { hideDropdown(); }
-  }
-
-  function showDropdown(results) {
-    if (!results.length) { hideDropdown(); return; }
-    focusedIdx = -1;
-    dropdown.dataset.results = JSON.stringify(results);
-    dropdown.innerHTML = results.map((r, i) => `
-      <div class="dropdown-item" onclick="selectAddress(${i})">
-        <div class="dropdown-bdnm">${r.bdNm}</div>
-        <div class="dropdown-addr">${r.roadAddr}</div>
-      </div>
-    `).join('');
-    dropdown.style.display = 'block';
-    // 드롭다운 표시 즉시 캐시 워밍 — 사용자가 선택하기 전에 MOLIT 데이터 미리 fetch
-    fetch(`/api/prefetch?lawd_cd=${results[0].admCd.slice(0, 5)}`).catch(() => {});
-  }
-
-  function hideDropdown() { dropdown.style.display = 'none'; }
-
-  async function selectAddress(idx) {
-    const results = JSON.parse(dropdown.dataset.results);
-    selectedJuso = results[idx];
-    aptMatch = null;
-    input.value = selectedJuso.bdNm;
-    hideDropdown();
-    fetch(`/api/prefetch?lawd_cd=${selectedJuso.admCd.slice(0, 5)}`).catch(() => {}); // 캐시 워밍
-    const sggCd = selectedJuso.admCd.slice(0, 5);
-    const dong = extractDong(selectedJuso.jibunAddr);
-    // apt-match와 apt-sizes를 병렬 호출
-    const [, matchData] = await Promise.allSettled([
-      fetchAptSizes(sggCd, selectedJuso.bdNm, dong),
-      fetchAptMatch(selectedJuso.bdNm, sggCd, dong),
-    ]);
-    if (matchData.status === 'fulfilled' && matchData.value?.lat) {
-      aptMatch = matchData.value;
-    }
-  }
-
+  // ── API 호출 ─────────────────────────────────────────────────────
   async function fetchAptMatch(bdNm, sggCd, dong) {
     try {
       const dongParam = dong ? `&dong=${encodeURIComponent(dong)}` : '';
@@ -363,6 +313,7 @@
 
   async function fetchAptSizes(lawd_cd, apt_name, dong) {
     try {
+      if (!lawd_cd || !apt_name) return;
       const dongParam = dong ? `&dong=${encodeURIComponent(dong)}` : '';
       const res = await fetch(
         `/api/apt-sizes?lawd_cd=${lawd_cd}&apt_name=${encodeURIComponent(apt_name)}${dongParam}`,
@@ -374,6 +325,7 @@
     } catch {}
   }
 
+  // ── UI 헬퍼 ──────────────────────────────────────────────────────
   function showSizeChips(sizes) {
     if (!sizes.length) return;
     const panel = document.getElementById('sizePanel');
@@ -389,47 +341,37 @@
     el.classList.add('active');
   }
 
-  function extractDong(jibunAddr) {
-    const m = jibunAddr.match(/\s(\S+동)\s/);
-    return m ? m[1] : null;
-  }
-
   function showError(msg) {
     const hint = document.querySelector('.hint');
     hint.textContent = msg;
     hint.className = 'hint-error';
     setTimeout(() => {
-      hint.textContent = '단지명 또는 동 주소를 입력하면 평형을 선택할 수 있어요';
+      hint.textContent = '입력창을 클릭하면 주소 검색 팝업이 열려요';
       hint.className = 'hint';
     }, 3000);
   }
 
+  // ── 이동 ─────────────────────────────────────────────────────────
   function goVerify() {
-    const addr = input.value.trim();
-    if (!addr) { input.focus(); return; }
+    if (!selectedAddr) { openDaumPostcode(); return; }
 
-    if (!selectedJuso) {
-      showError('목록에서 주소를 선택해주세요');
-      input.focus();
-      return;
-    }
+    let url = '/market?address=' + encodeURIComponent(selectedAddr.aptName);
+    url += '&lawd_cd='  + selectedAddr.lawdCd;
+    url += '&apt_name=' + encodeURIComponent(selectedAddr.aptName);
+    if (selectedAddr.dong) url += '&dong=' + encodeURIComponent(selectedAddr.dong);
 
-    let url = '/market?address=' + encodeURIComponent(addr);
-    url += '&lawd_cd=' + selectedJuso.admCd.slice(0, 5);
-    url += '&apt_name=' + encodeURIComponent(selectedJuso.bdNm);
-    const dong = extractDong(selectedJuso.jibunAddr);
-    if (dong) url += '&dong=' + encodeURIComponent(dong);
-    // apt-match DB 좌표 우선, 없으면 JUSO entX/entY fallback
+    // apt-match DB 좌표 우선 → Daum x/y(WGS84) fallback
     if (aptMatch?.lat) {
       url += '&lat=' + aptMatch.lat + '&lng=' + aptMatch.lng;
-    } else {
-      if (selectedJuso.entX) url += '&entX=' + selectedJuso.entX;
-      if (selectedJuso.entY) url += '&entY=' + selectedJuso.entY;
+    } else if (selectedAddr.y && selectedAddr.x) {
+      url += '&lat=' + selectedAddr.y + '&lng=' + selectedAddr.x;
     }
     if (selectedSize) url += '&pyeong=' + selectedSize;
     window.location.href = url;
   }
 </script>
+
+<script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
 
 </body>
 </html>
