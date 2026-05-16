@@ -324,6 +324,8 @@
       </div>
     `).join('');
     dropdown.style.display = 'block';
+    // 드롭다운 표시 즉시 캐시 워밍 — 사용자가 선택하기 전에 MOLIT 데이터 미리 fetch
+    fetch(`/api/prefetch?lawd_cd=${results[0].admCd.slice(0, 5)}`).catch(() => {});
   }
 
   function hideDropdown() { dropdown.style.display = 'none'; }
